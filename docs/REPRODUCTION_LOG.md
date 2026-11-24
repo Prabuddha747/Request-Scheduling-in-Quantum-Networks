@@ -23,3 +23,21 @@
 **Finding (network):** `netsquid.org` and `pypi.netsquid.org` both timed out from this sandboxed shell; GitHub was reachable fine. Not yet attributable to sandbox restriction vs. actual outage — needs checking from the user's own terminal.
 
 **No simulation has been run. No installation has been performed.** This entry covers documentation/audit work only, per the master prompt's instruction to stop after Phase 0/1 and report before touching the environment.
+
+## 2026-11-24 — Phase 2 + Phase 3 (partial)
+
+**Action:** Freed disk space (4.3GB -> 9.8GB) by deleting regenerable caches and already-installed `.dmg` installers — user-approved.
+
+**Action:** `git init`, default branch renamed to `main`. Added `vendor/netsquid` as a submodule pinned to `v1.0.1`; confirmed SHA matches the Phase 0 audit (`fece16a66507520a976dea31038e2e6754fbab88`). Created project directory structure, 4 scenario config YAMLs (parameters cross-checked against actual source, not assumed from the paper — see each config's comments for the script it maps to). Added `README.md`, `LICENSE`, `CITATION.cff`, `.gitignore`. Committed as `7feeda2`.
+
+**Action:** Started Docker Desktop, pulled `python:3.7-slim-buster` under `linux/amd64` emulation, confirmed `Python 3.7.17 x86_64` runs.
+
+**Finding:** `pydynaa==0.3.3` (NetSquid's discrete-event engine dependency) is **not on public PyPI** either (only an unrelated `0.0.1` exists there) — both `netsquid` and `pydynaa` require the gated `pypi.netsquid.org` index.
+
+**Finding:** `apt-get update` failed inside `python:3.7-slim-buster` — Debian Buster's repos are archived; fixed by pointing `/etc/apt/sources.list` at `archive.debian.org`.
+
+**Finding:** `cysignals==1.10.2` fails to build a wheel (a modern Cython pulled in during its isolated build triggers a `noexcept`-syntax incompatibility with the package's old `.pyx` sources) but succeeds via the `setup.py install` fallback — functionally fine, not something to "fix" by changing the pin.
+
+**Result:** Built and verified `qnr-repro:py3.7` Docker image — the full non-gated pinned stack (numpy 1.19.2, scipy 1.5.3, pandas 1.1.3, matplotlib 3.3.2, cysignals 1.10.2, etc.) installs and imports successfully. `netsquid`/`pydynaa` deliberately deferred to a runtime-only install step (`scripts/install_netsquid.sh`) so credentials never enter an image layer or git history.
+
+**Blocked:** `pypi.netsquid.org` times out at the TCP level from this sandboxed environment (DNS resolves correctly to `131.180.205.205`, port 443 connect times out) — tested both from the host shell and from inside a Docker container, same result, while GitHub/PyPI work fine from both. This needs to be checked from the user's own regular browser/terminal before the NetSquid-gated install step can be attempted. No simulator code has run yet.

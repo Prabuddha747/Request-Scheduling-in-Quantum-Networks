@@ -1,0 +1,22 @@
+# Regular grid scenario -> Figs. 12-13 (policy comparison needs cardinality=1 multipath script, not first_grid.py)
+# See FIGURE_MAPPING.md: Strict FIFO alone comes from first_grid.py;
+# the Strict/Best/Random FIFO comparison comes from first_gridmp.py at cardinality=1.
+scenario_id: paper_grid_regular
+upstream_scripts:
+  single_path_strict_fifo_only: first_grid.py   # algos=[spf-hops, minmax-dist], Strict FIFO only
+  policy_comparison: first_gridmp.py            # algos=[spf-hops, minmax, always-skip, random-skip], use cardinality=1
+topology:
+  grid_side_nodes: 5        # 5x5 = 25 nodes
+  link_distance_km: 1.8     # regular spacing
+timeslots: 10000
+offered_load_1_over_lambda: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]   # wiring TBC in Phase 3, see SOURCE_CODE_AUDIT.md open item
+scheduling_policies: [strict_fifo, best_fifo, random_fifo]
+path_selection: [spf_hops, minmax_dist]
+baseline_physical_params:
+  p_loss_init: 0.1
+  fibre_attenuation_db_per_km: 0.1
+  dephase_rate_hz: 1e6
+  depol_rate_hz: 5e3
+  gate_duration_ns: 10
+execution:
+  nworkers: 1   # override upstream's hardcoded 50 for the 8GB M1 Air -- recorded as a deliberate execution deviation

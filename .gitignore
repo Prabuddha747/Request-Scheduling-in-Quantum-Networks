@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+*.pem
+*.key
+docker-compose.override.yml
+
+# simulation outputs are large/non-deterministic-sized; never committed
+artifacts/raw/*
+artifacts/processed/*
+!artifacts/raw/.gitkeep
+!artifacts/processed/.gitkeep
+
+# figures/logs/manifests are small and worth keeping selectively,
+# but start ignored too -- unignore individual files deliberately when curating the final report
+artifacts/logs/*
+!artifacts/logs/.gitkeep

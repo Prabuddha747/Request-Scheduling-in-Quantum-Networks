@@ -1,0 +1,14 @@
+# Minimal smoke test: upstream's own documented example.
+# Maps to: vendor/netsquid/experiments/001-Scheduling-and-path-selection/minimal.py
+# No parameters here override anything -- minimal.py is run as-is (fixed 3x3 grid, 100 slots).
+# Expected stdout fields (from upstream README, recorded verbatim for regression comparison):
+#   degree-max, degree-min, degree-avg, tsduration, lenrate-X, success-X, meas,
+#   fidelity-X, delay, latency-X, length, sim_time
+scenario_id: smoke_test
+upstream_script: minimal.py
+expected_fields:
+  - degree-max
+  - degree-min
+  - degree-avg
+  - tsduration
+  - sim_time

@@ -1,0 +1,20 @@
+# Calibration scenario -> Fig. 11
+# Maps to: vendor/netsquid/experiments/001-Scheduling-and-path-selection/first_calibration.py
+#          (post-processed by first_calibration_plot.py)
+# NOT included in upstream run_all.sh -- must be invoked explicitly (see SOURCE_CODE_AUDIT.md).
+scenario_id: paper_calibration
+upstream_script: first_calibration.py
+upstream_plot_script: first_calibration_plot.py
+sweeps:
+  chain_fixed_length:
+    total_length_km: 15
+    num_nodes: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  chain_variable_distance:
+    num_nodes: 3
+    node_distance_km: [1, 2.5, 5, 7.5]   # 4 discrete points, not a continuous sweep -- see SOURCE_CODE_AUDIT.md
+  depol_rate_hz: [1e3, 1e4]
+  dephase_rate_hz: [1e5, 1e6, 1e7]
+baseline_physical_params:
+  p_loss_init: 0.1
+  fibre_attenuation_db_per_km: 0.1
+  gate_duration_ns: 10

@@ -1,0 +1,18 @@
+# Irregular grid scenario -> Fig. 14 (average swaps, irregular grid)
+scenario_id: paper_grid_irregular
+upstream_script: first_gridmpvar.py   # algos=[spf-hops, minmax, always-skip, random-skip]
+topology:
+  grid_side_nodes: 5                  # 5x5 = 25 nodes
+  link_distance_km_range: [1.08, 2.52]  # uniform
+timeslots: 10000
+offered_load_1_over_lambda: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+scheduling_policies: [strict_fifo, best_fifo, random_fifo]
+path_selection: [spf_hops, minmax_dist]
+baseline_physical_params:
+  p_loss_init: 0.1
+  fibre_attenuation_db_per_km: 0.1
+  dephase_rate_hz: 1e6
+  depol_rate_hz: 5e3
+  gate_duration_ns: 10
+execution:
+  nworkers: 1

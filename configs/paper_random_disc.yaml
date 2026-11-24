@@ -1,0 +1,28 @@
+# Random/disc topology scenario -> Figs. 15-20
+scenario_id: paper_random_disc
+upstream_script: first_disc.py        # algos=[spf-hops, minmax, always-skip, random-skip]
+upstream_postprocess: first_disc_lenrate.py
+topology:
+  num_nodes: 25
+  disc_radius_km: 6
+  link_threshold_km: 2
+  discard_disconnected: true
+replications: 200
+timeslots: 1000
+offered_load_1_over_lambda: [1, 2, 3, 4, 5]
+cardinalities: [1, 3, 5]   # from upstream first_disc.py; cardinality=1 is the single-path case
+scheduling_policies: [strict_fifo, best_fifo, random_fifo]
+path_selection: [spf_hops, minmax_dist]
+fidelity_thresholds: [0, 0.9]
+baseline_physical_params:
+  p_loss_init: 0.1
+  fibre_attenuation_db_per_km: 0.1
+  dephase_rate_hz: 1e6
+  depol_rate_hz: 5e3
+  gate_duration_ns: 10
+execution:
+  nworkers: 1
+  batching_note: >
+    200 replications must NOT run concurrently on this machine.
+    Run in small controlled batches (e.g. 1, then 5, then 10...) per the PRD's RAM policy,
+    checkpointing completed replications; this does not change the scientific sample size.

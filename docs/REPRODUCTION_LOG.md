@@ -51,3 +51,26 @@
 **Action (unblocked work while waiting):** Checked which of the 4 upstream `uiiit` unit test files (`test_stat.py`, `test_topology.py`, `test_utils.py`, `test_traffic.py`) import `netsquid`/`pydynaa` directly — none do. Ran `python -m unittest` for all of them inside `qnr-repro:py3.7`.
 
 **Result: all 80 upstream unit tests pass.** This validates the non-gated portion of the Docker environment (Python 3.7, numpy/scipy/pandas/cysignals stack, `uiiit`'s parallel-runner/traffic/stat/topology modules) end-to-end, independent of the NetSquid outage. The remaining Phase 3/4 gate (`import netsquid`, `minimal.py`, any test file that does import netsquid) stays blocked until the service is reachable.
+
+## 2026-11-24 — Offline development phase (Phases 3/4/8/9 scaffolding that doesn't need netsquid)
+
+**Action:** Re-verified netsquid.org/pypi.netsquid.org are still unreachable (TCP timeout on both port 443 and 80, DNS resolves fine) — consistent with the earlier confirmed outage, no change.
+
+**Finding (resolves a prior open question):** Read `graphs/grid-success.plt`'s actual gnuplot plot command — `$2/$1*0.995e-4` — which shows `cardinality` (the `--factor cardinality` export column) doubles as the offered-load (1/λ) axis for the multipath grid/disc scripts, normalized by `1/timeslots`. Documented in `docs/SOURCE_CODE_AUDIT.md`; the exact `0.995` vs `1.0` constant is deferred to Phase 8 when real data exists to check against.
+
+**Action:** Confirmed `uiiit.simstat` (upstream's own `Stat`/`MultiStat`/`Conf` classes, including their JSON schema and their `statsmodels`-based 95% CI calculation) imports and runs with zero `netsquid`/`pydynaa` dependency.
+
+**Built (`src/qnr_repro/`), all without importing netsquid:**
+- `manifests.py` — `RunManifest` dataclass (run_id, scenario, params, seed, repo_sha, env, status lifecycle incl. a `blocked` state for exactly this kind of outage), JSON save/load.
+- `result_io.py` — thin wrapper around `uiiit.simstat.MultiStat`/`Stat`, reusing upstream's own JSON parsing and CI math rather than reimplementing either (the PRD forbids altering metric definitions).
+- `metrics.py` — `normalized_entanglement_rate` (formula taken from the gnuplot script above), `average_fidelity_ci`, `average_swaps`.
+- `validation.py` — scenario-config validation (raises on missing/out-of-range values) and `require_metric` (raises on a missing metric instead of silently returning 0, per the PRD's missing-data rule).
+- `paper_figures.py` — two generic reusable plot shapes (x-y with 95% CI error bars; distribution boxplot) that structurally cover all of Figs. 11-20, each requiring label/units/sample-size arguments. Self-check uses data explicitly labeled "SYNTHETIC FIXTURE".
+
+**Tests:** `tests/test_{manifest,result_io,metrics,validation}.py` — 18 tests, all pass inside `qnr-repro:py3.7`.
+
+**Action:** Added `scripts/check_netsquid_access.sh` (one-shot reachability check, no retries, no credential output) and `docs/NETSQUID_ACCESS_STATUS.md` logging the current (still unreachable) status.
+
+**Resource note:** Pruned Docker's dangling build cache (freed ~200MB). Disk currently 6.9GB free (down from the 9.8GB after the earlier cleanup, due to the `qnr-repro:py3.7` image + base layers, ~1GB total) — still healthy, rechecked per the PRD's resource policy rather than assumed.
+
+**No simulation has run. No fabricated results were created anywhere in this entry** — the figure-generation self-check explicitly labels its fixture data as synthetic in both the title string and an assertion.

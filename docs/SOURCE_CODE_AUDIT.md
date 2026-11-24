@@ -71,7 +71,13 @@ Path-selection algorithm/metric is a separate substring match: `"spf"`/`"minmax"
 | Queue expiry > 10 slots | yes | not yet located in `uiiit/oracle.py` beyond `max_delay` param; needs confirmation in Phase 3/4 | ⚠️ open |
 
 ## Deviations / open questions to resolve before claiming any figure "REPRODUCED"
-1. **Offered load (1/λ) wiring** is not confirmed from this pass — `MultiPoissonApplication(..., cardinality, 1, seed)` in `run_simulation.py` takes a cardinality and a hardcoded `1` (possibly the λ-related arg). Needs a focused read of `uiiit/traffic.py` in Phase 3 before any grid/disc run is trusted to sweep offered load correctly.
+1. ~~**Offered load (1/λ) wiring**~~ **RESOLVED** by reading `graphs/grid-success.plt`'s actual plot command:
+   `'results-gridmp/algorithm=spf-hops.success-0.9.dat' u 1:($2/$1*0.995e-4)` — column 1 is the
+   `--factor cardinality` value `export.py` exported, column 2 is the `success-X` count. So
+   **`cardinality` *is* the offered-load (1/λ) axis** for the multipath scripts, and
+   `0.995e-4 ≈ 1/10000` (the grid scenario's `timeslots=10000`) is the normalizing denominator.
+   Exact derivation of the `0.995` factor (vs. a clean `1.0`) is deferred to Phase 8 when real
+   data exists to sanity-check against — not invented now.
 2. **`nworkers = 50`** in `first_grid.py`/likely similar in other scripts — must be overridden to a low value (see Resource section) on the 8 GB M1 Air. This is a deliberate *execution* deviation, not a scientific one — document per-run in the manifest.
 3. **`run_all.sh` omits calibration** — calibration must be run and exported manually; `export_all.sh` has no calibration branch either, so Fig. 11 export path is also likely manual (post-processing is `first_calibration_plot.py`, not `export.py`).
 4. **Figures 12–14 are produced from `first_gridmp.py`/`first_gridmpvar.py` at `cardinality=1`**, not from `first_grid.py` — despite `first_grid.py` superficially looking like "the grid experiment." Any config/manifest naming must make this explicit to avoid silently reporting the wrong script as the source of a figure.

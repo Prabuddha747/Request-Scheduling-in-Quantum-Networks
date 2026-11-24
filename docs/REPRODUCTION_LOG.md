@@ -74,3 +74,23 @@
 **Resource note:** Pruned Docker's dangling build cache (freed ~200MB). Disk currently 6.9GB free (down from the 9.8GB after the earlier cleanup, due to the `qnr-repro:py3.7` image + base layers, ~1GB total) — still healthy, rechecked per the PRD's resource policy rather than assumed.
 
 **No simulation has run. No fabricated results were created anywhere in this entry** — the figure-generation self-check explicitly labels its fixture data as synthetic in both the title string and an assertion.
+
+## 2026-11-24 — Revised strategy: analysis of authors' published reference archives
+
+**Action:** Confirmed `vendor/netsquid` submodule already present (steps 1-2 of the revised plan were already done in Phase 2). Checked reachability of both archive URLs from the experiment README — both resolved (via a 301 to `https://turig.iit.cnr.it/...`), `HEAD` content-lengths matched the README's documented 272MB/313MB.
+
+**Action:** Downloaded both archives into `artifacts/reference/`. **MD5 verified exact match** against the README's recorded checksums for both (`208815839ff...` and `754d5db3b2...`).
+
+**Action:** Inspected `tar -tzvf` listings (uncompressed size sums, ~1GB each) *before* extracting, to estimate disk needs. Extracted one at a time, checking `df -h .` after each: disk went 8.1GB → 6.5GB (after raw JSON) → 4.4GB (after results — 266,592 tiny files caused ~1.8GB on-disk for ~1.0GB of actual content, APFS block overhead). Deleted the now-redundant compressed `.tgz` files post-verification to reclaim ~585MB, landing at ~4.9GB free. Added `artifacts/reference/` to `.gitignore`.
+
+**Finding:** Memory was genuinely tight during this work (`vm_stat` showed ~70MB literally free pages at one point). Deliberately did **not** `json.load()` `first_disc.json` (747MB) in Python — too risky on this machine. Used `jq` (writing to disk, not stdout) for the two 147MB files, which worked fine. Derived `first_disc.json`'s structure analytically from the pinned source's loop parameters instead, cross-checked against the processed `results-disc/` filenames (which encode every (algorithm, cardinality, dephase_rate, seed) combination and are cheap to glob).
+
+**Finding (real discrepancy, documented not resolved):** `first_grid.json`'s 9 entries span 3 distinct `algorithm` values (`spf-hops`, `minmax-dist`, **`spf-dist`**) — but the pinned `v1.0.1` source's `first_grid.py` only lists `["spf-hops", "minmax-dist"]`. `first_gridmp.json`/`first_gridmpvar.json` showed no such mismatch (both matched the pinned source's 4-policy `algos` list exactly). See `docs/REFERENCE_DATA_AUDIT.md`.
+
+**Action:** Added `load_dat_count`/`load_dat_points` to `result_io.py`, matching `uiiit.simstat.Stat.export()`'s exact text format (confirmed by reading the source before writing the parser). Built `scripts/analyze_reference_data.py` using the existing `result_io`/`metrics`/`paper_figures` modules against the real archived data (no new scenario-specific plotting code — reused the generic framework from the earlier offline phase).
+
+**Result:** Generated 5 real figures from actual author-provided data in `artifacts/figures/reference/`, each explicitly titled "Author-provided reference data ... NOT an independently executed NetSquid simulation": calibration (fidelity vs. chain distance, 3 noise combos — shows expected physical degradation with distance/dephasing), regular + irregular grid (normalized rate and fidelity vs. offered load, all 4 scheduling policies — rate drops under load as expected, fidelity stays roughly flat since it depends on link quality not congestion), irregular-grid average swaps vs. offered load, and a degree distribution across 192/200 disc replications (8 presumably discarded as disconnected topologies, consistent with the paper's model — not fabricated to hit exactly 200). All visually inspected and sane before accepting.
+
+**Deferred:** Figs. 16-20 need a larger per-seed aggregation over `results-disc/`'s 265,824 files. Not attempted in this session given disk had dropped to **~3.9GB free (99% full)** by this point — flagged clearly in `docs/SESSION_HANDOFF.md` rather than pushed through.
+
+**This entire session's output is reference-data analysis, not a NetSquid reproduction claim** — NetSquid itself remains uninstalled.

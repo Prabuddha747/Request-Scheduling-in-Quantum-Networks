@@ -28,3 +28,15 @@ def load_raw_results(path) -> MultiStat:
     hasn't been run) -- same behaviour as upstream's own json_load_from_file.
     """
     return MultiStat.json_load_from_file(str(path))
+
+
+def load_dat_count(path) -> "tuple[float, int]":
+    """(sum, count) from one of upstream's exported count-metric .dat files
+    (format: 'sum count\\n', written by Stat.export())."""
+    total, count = Path(path).read_text().split()
+    return float(total), int(count)
+
+
+def load_dat_points(path) -> list:
+    """List of float values from an exported point-metric .dat file (one value/line)."""
+    return [float(x) for x in Path(path).read_text().splitlines() if x.strip()]

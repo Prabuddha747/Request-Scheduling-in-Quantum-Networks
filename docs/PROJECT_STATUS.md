@@ -1,11 +1,12 @@
 # Project Status
 
-**Current phase:** Phase 0, 1, 2 complete. Phase 3 (environment), Phase 4 (tests), and the
-project-owned experiment-management/result-processing/figure framework (parts of Phases 8-9)
-are each complete for everything that doesn't require the NetSquid package index. Remaining
-work in every phase is blocked on a **confirmed real outage** of netsquid.org/pypi.netsquid.org
-(user-verified from their own browser, not a sandbox artifact). Re-check with
-`./scripts/check_netsquid_access.sh` (one-shot, no auto-retry).
+**Current phase:** Phase 0, 1, 2 complete. Phase 3 (environment), Phase 4 (tests) complete for
+everything not requiring the NetSquid package index. **Revised strategy (this entry):** while
+netsquid.org stays down, the project now also uses the authors' own published reference-result
+archives (downloaded, MD5-verified, partially plotted) to make real progress on Phases 8-9 —
+see `docs/REFERENCE_DATA_AUDIT.md`. This is explicitly *analysis of author-provided results*,
+not a NetSquid reproduction; the eventual real reproduction (Phase 3 `minimal.py` onward) is
+still fully blocked on the outage. Re-check with `./scripts/check_netsquid_access.sh`.
 
 ## Completed
 - Confirmed all 4 docs present in `docs/` (3 PRD/Plan/TRD PDFs + the research paper PDF).
@@ -34,6 +35,7 @@ work in every phase is blocked on a **confirmed real outage** of netsquid.org/py
   - `paper_figures.py`: two generic, reusable plot shapes (x-y with CI, distribution boxplot) covering the structural pattern behind all of Figs. 11-20, each requiring labels/units/sample size as arguments rather than optional kwargs. Self-check demo uses data explicitly labeled "SYNTHETIC FIXTURE — not a research result".
   - 18 unit tests across `tests/test_{manifest,result_io,metrics,validation}.py`, all passing in the Docker environment.
 - **`scripts/check_netsquid_access.sh`** — one-shot reachability check (website vs. package index, no retries, no credential printing). Run manually, not on a timer. Logged current status in `docs/NETSQUID_ACCESS_STATUS.md`.
+- **Reference-data analysis (revised strategy)** — downloaded and MD5-verified both archives linked from the experiment README (272MB raw JSON, 313MB processed results); extracted (~2.8GB) into `artifacts/reference/` (gitignored, never committed); audited structure in `docs/REFERENCE_DATA_AUDIT.md`, including a genuine discrepancy (`first_grid.json` contains an `algorithm` value not in the pinned source). Built `scripts/analyze_reference_data.py`, which produced 5 real figures in `artifacts/figures/reference/` (calibration, grid rate+fidelity regular/irregular, irregular-grid swaps, disc degree distribution from 192/200 replications) — every one explicitly labeled as author-provided-data analysis, not a simulation run. Figs. 16-20 (rate/fidelity/delay distributions, serving probability) have data available in `results-disc/` but are not yet built, deferred given disk pressure (see below).
 
 ## Failed tests
 None. 80 upstream `uiiit` tests + 18 project-owned tests all pass. Tests that would need
@@ -59,7 +61,7 @@ None from the simulator. Project-owned code/tests/docs only.
 - Two open questions about the source's own semantics (offered-load wiring, queue-expiry constant) not yet resolved by code reading.
 
 ## Next recommended action
-1. Periodically re-run `./scripts/check_netsquid_access.sh` (by hand, not automated) until it reports REACHABLE.
-2. Once reachable: register at the NetSquid forum if not already done, run `scripts/install_netsquid.sh` inside the container, then `minimal.py` as the Phase 3 smoke-test gate. Exact commands in `docs/SESSION_HANDOFF.md`.
-3. After that passes: Phase 5 (calibration) is next in sequence — do not skip ahead to grid/disc.
-4. Disk is at 6.9GB free (down from 9.8GB after Docker image/cache growth, still healthy) — recheck before any large experiment batch per the PRD's RAM/disk policy.
+1. **Disk is now at ~3.9GB free (99% full)** — this is the most pressing item. `artifacts/reference/` (2.8GB) can be deleted and re-extracted on demand later (re-download+verify+extract takes a few minutes, both MD5s confirmed good) if more headroom is needed before further work.
+2. If continuing reference-data figures: Figs. 16-20 need a per-seed aggregation pass over `results-disc/`'s 265,824 files — build incrementally (stream file-by-file, don't glob everything into memory at once), per the existing pattern in `scripts/analyze_reference_data.py`'s degree-distribution function.
+3. Periodically re-run `./scripts/check_netsquid_access.sh` (by hand) until it reports REACHABLE — nothing automated polls it.
+4. Once reachable: register at the NetSquid forum if not already done, run `scripts/install_netsquid.sh` inside the container, then `minimal.py` as the Phase 3 smoke-test gate (exact commands in `docs/SESSION_HANDOFF.md`). This is still the only way to get a genuine NetSquid-reproduction result, as opposed to reference-data analysis.

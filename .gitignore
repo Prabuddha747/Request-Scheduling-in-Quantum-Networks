@@ -17,3 +17,7 @@ artifacts/processed/*
 # but start ignored too -- unignore individual files deliberately when curating the final report
 artifacts/logs/*
 !artifacts/logs/.gitkeep
+
+# authors' published reference archives (~2.8GB downloaded+extracted) -- never committed,
+# re-downloadable from the experiment README links, MD5s recorded in docs/REFERENCE_DATA_AUDIT.md
+artifacts/reference/

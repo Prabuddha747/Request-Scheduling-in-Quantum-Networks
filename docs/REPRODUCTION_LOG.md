@@ -41,3 +41,13 @@
 **Result:** Built and verified `qnr-repro:py3.7` Docker image — the full non-gated pinned stack (numpy 1.19.2, scipy 1.5.3, pandas 1.1.3, matplotlib 3.3.2, cysignals 1.10.2, etc.) installs and imports successfully. `netsquid`/`pydynaa` deliberately deferred to a runtime-only install step (`scripts/install_netsquid.sh`) so credentials never enter an image layer or git history.
 
 **Blocked:** `pypi.netsquid.org` times out at the TCP level from this sandboxed environment (DNS resolves correctly to `131.180.205.205`, port 443 connect times out) — tested both from the host shell and from inside a Docker container, same result, while GitHub/PyPI work fine from both. This needs to be checked from the user's own regular browser/terminal before the NetSquid-gated install step can be attempted. No simulator code has run yet.
+
+## 2026-11-24 — netsquid.org reachability re-check (confirmed outage) + Phase 4 (partial)
+
+**Action:** Re-ran DNS/TCP/HTTP checks against `netsquid.org`/`pypi.netsquid.org` from multiple angles (port 443, port 80, verbose curl). Identical silent-drop timeout every time.
+
+**Action:** Asked the user to check `https://netsquid.org` directly in their own browser. **Confirmed: it does not load for them either.** This rules out a sandbox-specific block — it's a real outage or access issue on the NetSquid side, outside anyone's control here. No further diagnosis possible from this environment; revisit later.
+
+**Action (unblocked work while waiting):** Checked which of the 4 upstream `uiiit` unit test files (`test_stat.py`, `test_topology.py`, `test_utils.py`, `test_traffic.py`) import `netsquid`/`pydynaa` directly — none do. Ran `python -m unittest` for all of them inside `qnr-repro:py3.7`.
+
+**Result: all 80 upstream unit tests pass.** This validates the non-gated portion of the Docker environment (Python 3.7, numpy/scipy/pandas/cysignals stack, `uiiit`'s parallel-runner/traffic/stat/topology modules) end-to-end, independent of the NetSquid outage. The remaining Phase 3/4 gate (`import netsquid`, `minimal.py`, any test file that does import netsquid) stays blocked until the service is reachable.

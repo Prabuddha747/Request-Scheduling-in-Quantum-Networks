@@ -207,7 +207,7 @@ with tab_findings:
         st.info("No matrix experiment raw data yet — run scripts/run_matrix_experiment.py.")
 
     st.divider()
-    st.subheader("")
+    st.subheader("The paper's own published figures")
     if PLOTS_DIR.exists():
         names = sorted(p.name for p in PLOTS_DIR.glob("*.pdf"))
         groups: dict[str, dict[str, str]] = {}

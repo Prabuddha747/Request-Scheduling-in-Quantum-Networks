@@ -2,6 +2,20 @@
 name = "dqc"
 version = "0.0.1"
 requires-python = ">=3.12"
+dependencies = [
+    "simpy",
+    "numpy",
+    "scipy",
+    "pandas",
+    "matplotlib",
+    "pyyaml",
+    "torch",
+    "pymetis",
+    "streamlit",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [build-system]
 requires = ["setuptools>=68"]

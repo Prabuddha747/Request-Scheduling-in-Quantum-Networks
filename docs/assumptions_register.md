@@ -247,6 +247,27 @@ the nearest microsecond or coarser) when MILP is actually run against
 real jobs in Phase 7, and disclose the rounding error introduced, per the
 master prompt's "do not silently reduce experiment coverage" rule.
 
+## A9. PPO critic needs a fixed-size input; paper gives no max queue length
+**Issue:** The actor is per-job (works for any queue length), but the
+critic processes "a flattened state representation through a single-hidden-
+layer MLP" — a flattened |J|x4 state needs |J| fixed ahead of time, and the
+paper never gives a maximum queue/job-batch size.
+**Current treatment:** `src/dqc/rl/network.py` adds a `max_jobs` constructor
+parameter (default 32) that zero-pads (or truncates) the state before
+flattening for the critic only; the actor is unaffected since it scores
+jobs independently.
+**Why it matters:** `max_jobs` is an implementation necessity, not a
+sourced paper value — if ever tuned, it should be set generously above the
+largest realistic per-slot queue length (per `o.log`, arrivals-per-slot
+examples seen were single digits at λ=5, so 32 is a comfortable margin, not
+a tight fit).
+**Impact:** Low — `max_jobs` only affects the critic's value estimate
+(training-time bookkeeping), never the actor's job-selection behavior or
+Assignment outputs.
+**Resolution path:** Not resolved further; no paper source addresses this.
+Flagging here is enough so a future reader doesn't mistake 32 for a sourced
+constant.
+
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3
 resolves to 3.14.7. A separate Python.framework install at

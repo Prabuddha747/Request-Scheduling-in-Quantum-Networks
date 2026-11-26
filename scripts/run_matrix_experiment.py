@@ -34,7 +34,7 @@ from dqc.workload import build_job_catalogue, generate_trace
 N_QPUS = 10
 QPU_IDS = [f"node{i}" for i in range(N_QPUS)]
 SLOT_DURATION_NS = 1.5e10
-N_SLOTS = 30
+N_SLOTS = int(sys.argv[1]) if len(sys.argv) > 1 else 30  # paper uses 1000
 SEED = 7
 CONDITIONS = [(5, 0.0), (5, 0.5), (10, 0.0), (10, 0.5)]
 

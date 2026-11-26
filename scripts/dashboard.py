@@ -57,8 +57,8 @@ def _per_slot_metric_series(df: pd.DataFrame, metric: str) -> list[float]:
     return values
 
 
-def _own_cdf_figure(lam: int, tau: float, metric: str, xlabel: str):
-    fig, ax = plt.subplots(figsize=(4.2, 3.2))
+def _own_cdf_figure(lam: int, tau: float, metric: str, xlabel: str, wide: bool = False):
+    fig, ax = plt.subplots(figsize=(8.4, 3.2) if wide else (4.2, 3.2))
     for name in MATRIX_SCHEDULER_NAMES(lam):
         path = RAW_DIR / f"matrix_lambda={lam}_tau={tau}_{_safe_name(name)}.csv"
         if not path.exists():
@@ -201,13 +201,13 @@ with tab_findings:
             cols = st.columns(2)
             for col, (metric, xlabel) in zip(cols, row):
                 with col:
-                    st.pyplot(_own_cdf_figure(lam, tau, metric, xlabel), clear_figure=True)
-        st.pyplot(_own_cdf_figure(lam, tau, "fairness", "Fairness"), clear_figure=True)
+                    st.pyplot(_own_cdf_figure(lam, tau, metric, xlabel), clear_figure=True, width="stretch")
+        st.pyplot(_own_cdf_figure(lam, tau, "fairness", "Fairness", wide=True), clear_figure=True, width="stretch")
     else:
         st.info("No matrix experiment raw data yet — run scripts/run_matrix_experiment.py.")
 
     st.divider()
-    st.subheader("The paper's own published figures")
+    st.subheader("")
     if PLOTS_DIR.exists():
         names = sorted(p.name for p in PLOTS_DIR.glob("*.pdf"))
         groups: dict[str, dict[str, str]] = {}
@@ -228,7 +228,7 @@ with tab_findings:
                         with col:
                             st.markdown(_pdf_iframe(PLOTS_DIR / plots[metric], height=320), unsafe_allow_html=True)
             if "fairness" in plots:
-                st.markdown(_pdf_iframe(PLOTS_DIR / plots["fairness"], height=320), unsafe_allow_html=True)
+                st.markdown(_pdf_iframe(PLOTS_DIR / plots["fairness"], height=420), unsafe_allow_html=True)
 
     st.divider()
     st.subheader("Scheduler comparison across all five metrics")
@@ -290,7 +290,7 @@ with tab_results:
     else:
         choice = st.selectbox("Result set", [p.name for p in available])
         df = pd.read_csv(SUMMARY_DIR / choice)
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
 
         metric_cols = [c for c in ["makespan_ns", "qpu_utilization", "non_local_gate_rate", "selp", "fairness"] if c in df.columns]
         if metric_cols and "scheduler" in df.columns:

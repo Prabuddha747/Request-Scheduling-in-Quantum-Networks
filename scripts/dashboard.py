@@ -12,12 +12,69 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
+from dqc.metrics import fairness, makespan, non_local_gate_rate, qpu_utilization, selp
+
 ROOT = Path(__file__).resolve().parent.parent
 SUMMARY_DIR = ROOT / "results" / "summary"
+RAW_DIR = ROOT / "results" / "raw"
 PLOTS_DIR = ROOT / "results" / "figures" / "regenerated_from_script"
+N_QPUS_MATRIX = 10  # must match scripts/run_matrix_experiment.py's N_QPUS
+MATRIX_CONDITIONS = [(5, 0.0), (5, 0.5), (10, 0.0), (10, 0.5)]  # lambda=5 first, as requested
+MATRIX_SCHEDULER_NAMES = lambda lam: [  # noqa: E731 -- matches run_matrix_experiment.py's build_schedulers() exactly
+    "FIFO", "LIST", "Resource-Priority", "EPR", "EPR (Node Selection)", "MILP",
+    f"PPO (Node Selection, trained lambda={lam})", "ASAP",
+]
+
+
+def _safe_name(name: str) -> str:
+    return name.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "").replace("=", "")
+
+
+def _per_slot_metric_series(df: pd.DataFrame, metric: str) -> list[float]:
+    """This project's OWN per-job records (not the paper's data), aggregated
+    per arrival slot the same way the paper's own CDFs are: one metric value
+    per time slot, across all slots, forming an empirical distribution."""
+    values = []
+    for _, g in df.groupby("arrival_slot"):
+        starts, finishes = g["start_time_ns"].tolist(), g["completion_time_ns"].tolist()
+        exec_times, demands = g["exec_time_ns"].tolist(), g["qpu_demand"].tolist()
+        latencies = (g["completion_time_ns"] - g["arrival_time_ns"]).tolist()
+        if metric == "makespan":
+            values.append(makespan(starts, finishes) / 1e9)  # ns -> s, matches paper's units
+        elif metric == "qpu_utilization":
+            values.append(qpu_utilization(exec_times, demands, makespan(starts, finishes), N_QPUS_MATRIX))
+        elif metric == "non_local_gate_rate":
+            values.append(non_local_gate_rate(starts, finishes))
+        elif metric == "selp":
+            values.append(selp(exec_times, latencies))
+        elif metric == "fairness":
+            values.append(fairness(exec_times, latencies))
+    return values
+
+
+def _own_cdf_figure(lam: int, tau: float, metric: str, xlabel: str):
+    fig, ax = plt.subplots(figsize=(4.2, 3.2))
+    for name in MATRIX_SCHEDULER_NAMES(lam):
+        path = RAW_DIR / f"matrix_lambda={lam}_tau={tau}_{_safe_name(name)}.csv"
+        if not path.exists():
+            continue
+        values = sorted(_per_slot_metric_series(pd.read_csv(path), metric))
+        if not values:
+            continue
+        y = np.arange(1, len(values) + 1) / len(values)
+        ax.plot(values, y, marker=".", markersize=4, linewidth=1, label=name)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("Cumulative Probability")
+    ax.set_ylim(0, 1.02)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=6, loc="lower right")
+    fig.tight_layout()
+    return fig
 
 st.set_page_config(page_title="DQC Scheduler Reproduction", layout="wide")
 
@@ -120,13 +177,58 @@ def _pdf_iframe(path: Path, height: int = 460) -> str:
     return f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="{height}"></iframe>'
 
 
+GRID_METRICS = ["makespan", "qpu_utilization", "non-local_gate_rate", "selp"]
+ALL_METRICS = GRID_METRICS + ["fairness"]
+
 with tab_findings:
+    st.subheader("This project's own results, plotted the way the paper plots its own")
+    st.caption(
+        "These CDFs are computed from this project's own scheduler runs "
+        "(results/raw/matrix_*.csv) — not the paper's published numbers — "
+        "aggregated per time slot the same way the paper's own figures are, "
+        "for a like-for-like visual comparison of shape and spread."
+    )
+    condition_labels = [f"CDF (λ={lam}" + (f", τ={tau})" if tau else ")") for lam, tau in MATRIX_CONDITIONS]
+    if any((RAW_DIR / f"matrix_lambda={lam}_tau={tau}_FIFO.csv").exists() for lam, tau in MATRIX_CONDITIONS):
+        condition_idx = st.selectbox("Condition", range(len(MATRIX_CONDITIONS)),
+                                      format_func=lambda i: condition_labels[i])
+        lam, tau = MATRIX_CONDITIONS[condition_idx]
+        metric_specs = [
+            ("makespan", "Makespan (s)"), ("qpu_utilization", "QPU Utilization"),
+            ("non_local_gate_rate", "Non-local gate rate"), ("selp", "SELP"),
+        ]
+        for row in (metric_specs[:2], metric_specs[2:]):
+            cols = st.columns(2)
+            for col, (metric, xlabel) in zip(cols, row):
+                with col:
+                    st.pyplot(_own_cdf_figure(lam, tau, metric, xlabel), clear_figure=True)
+        st.pyplot(_own_cdf_figure(lam, tau, "fairness", "Fairness"), clear_figure=True)
+    else:
+        st.info("No matrix experiment raw data yet — run scripts/run_matrix_experiment.py.")
+
+    st.divider()
+    st.subheader("The paper's own published figures")
     if PLOTS_DIR.exists():
         names = sorted(p.name for p in PLOTS_DIR.glob("*.pdf"))
-        if names:
-            choice = st.selectbox("Distribution", names, label_visibility="collapsed")
+        groups: dict[str, dict[str, str]] = {}
+        for name in names:
+            stem = name[:-4]
+            for metric in ALL_METRICS:
+                if stem.endswith("_" + metric):
+                    groups.setdefault(stem[: -len(metric) - 1], {})[metric] = name
+                    break
+        if groups:
+            group_choice = st.selectbox("Network load / variant", sorted(groups), label_visibility="collapsed")
             st.caption("Cumulative distributions of scheduler behavior under the paper's job-arrival and network model.")
-            st.markdown(_pdf_iframe(PLOTS_DIR / choice), unsafe_allow_html=True)
+            plots = groups[group_choice]
+            for row in (GRID_METRICS[:2], GRID_METRICS[2:]):
+                cols = st.columns(2)
+                for col, metric in zip(cols, row):
+                    if metric in plots:
+                        with col:
+                            st.markdown(_pdf_iframe(PLOTS_DIR / plots[metric], height=320), unsafe_allow_html=True)
+            if "fairness" in plots:
+                st.markdown(_pdf_iframe(PLOTS_DIR / plots["fairness"], height=320), unsafe_allow_html=True)
 
     st.divider()
     st.subheader("Scheduler comparison across all five metrics")

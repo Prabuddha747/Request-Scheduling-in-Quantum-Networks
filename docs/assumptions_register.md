@@ -46,10 +46,43 @@ the real remaining blocker for the job catalogue, not the circuit defs.
 **Current treatment:** Circuit definitions (A.1-A.5) are fully transcribed
 into the traceability ledger; E_j/R_j/T_j derivation stays open until ref [7]
 is obtained or the compilation procedure is otherwise pinned down.
-**Resolution path:** Locate ref [7] ("Execution management of distributed
-quantum computing jobs", 2024 IEEE QCE) for its E_j/R_j/T_j procedure, or
-treat a declared proxy as an explicit `EXTENSION`/assumption per the master
-prompt's Section 6 guidance.
+**Resolution path:** RESOLVED (partially) 2026-11-26 — obtained ref [7] in
+full (Ferrari, Bandini, Amoretti, "Execution Management of Distributed
+Quantum Computing Jobs," QCE 2024, pp.150-154, via INSPIRE-HEP mirror,
+DOI 10.1109/QCE60285.2024.10269 — no arXiv preprint exists for it). Findings:
+- **R_j** (QPUs required) is not a formula — it is a direct output of the
+  quantum compiler [ref 8, Ferrari/Carretta/Amoretti 2023] that partitions
+  the monolithic circuit; it is simply read off the compiled job.
+- **T_j** (execution time) is computed by building one directed-acyclic
+  task graph per QPU-program in the job (vertices = tasks: single-qubit
+  gate, two-qubit gate, entanglement generation, readout, wait-for-peer;
+  edges = per-qubit timing costs from a hardware parameter table), then
+  taking the length of the longest weighted path across all the job's
+  per-QPU graphs. This is a *procedure* (compile → DAG → longest-path), not
+  a closed-form function of qubit count.
+- **E_j** is not named in ref [7] at all. Ref [7] instead counts `N_Ri`
+  (number of non-local gates in job i) for its own "quantum network
+  utilization" metric (Eq. 2 there) — not identical to but the likely
+  ancestor of the 2026 paper's E_j (EPR pairs), since each non-local gate
+  (TeleGate/CatEnt primitive, Fig.1) consumes exactly one EPR pair.
+- **Hardware-constant mismatch, still open:** ref [7]'s Table I timing
+  constants (carbon/electron init, 1-/2-qubit gate durations, readout,
+  entanglement-generation time ≈0.35s) are for **color-center QPUs**. The
+  2026 paper's own Table 2/3 are for **trapped-ion links** and only give
+  EPR/entanglement parameters (t_cycle, P_s, fidelity, t_state) — it never
+  states local single-/two-qubit gate durations or qubit-init/readout
+  times for its own hardware model. So "the same procedure as in [7]"
+  (DAG + longest path) is now well understood, but the local-gate timing
+  constants to plug into that procedure for the 2026 paper's trapped-ion
+  setting are still missing from both papers.
+**Remaining impact:** T_j can be computed exactly for the network
+(EPR/non-local) portion of a job's critical path using Eq.1-2 + Table 2/3,
+but the local-gate portion of T_j has no published constants in either
+paper. Any T_j we compute must either (a) use ref [8]'s compiler output
+directly if obtainable, or (b) declare placeholder local-gate timing
+constants as an explicit `EXTENSION`/assumption, clearly distinguished from
+the paper-sourced network-timing portion, and label resulting makespans
+`SCHEDULER_MODEL_REPRODUCTION`.
 
 ## A4. Job catalogue construction / truncated-Poisson bounds
 **Issue:** Master prompt notes the paper may omit exact truncation bounds

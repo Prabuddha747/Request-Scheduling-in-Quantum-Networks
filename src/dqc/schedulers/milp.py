@@ -2,14 +2,16 @@
 
 ponytail: horizon H = sum(T_j) over INTEGER time units. Raw nanosecond
 DQCJob.exec_time_ns would make H astronomically large (sum of ~1e8-1e10 ns
-values => a billions-of-steps horizon), so `time_scale_ns` rescales/rounds
-durations to a manageable integer grid before solving; the returned
+values => a billions-of-steps horizon). `time_scale_ns=None` (the default)
+auto-derives a scale each call from the CURRENT queue's own durations,
+targeting `target_horizon_steps` discrete steps regardless of how large or
+small the actual ns values are -- this is what makes MILP usable at any
+scale without per-experiment manual tuning (previously (A8) required a
+hand-picked constant; auto-scaling closes that gap). The returned
 Assignment still carries the job's original (unrounded) exec_time_ns for
-completion timing. This scheduler is for Phase 4's small-instance
-comparisons per the master prompt, not full 1000-slot/10-QPU production
-runs -- see docs/assumptions_register.md for the scale-up gap (upgrade
-path: a rolling/receding horizon or a coarser time grid if full-scale MILP
-runs are ever needed).
+completion timing -- only the internal search grid is coarsened, which
+trades makespan precision (bounded by horizon/target_horizon_steps) for
+tractability, a real approximation, not a free lunch.
 
 Node selection is out of scope here (paper gives MILP a total-capacity
 resource constraint only, no node-quality awareness -- Table 1 doesn't list
@@ -32,11 +34,17 @@ class MILPSolveInfo:
     objective: float | None
     solve_time_s: float
     optimality_gap: float | None
+    horizon_steps: int = 0
+    time_scale_ns_used: float = 1.0
+
+
+DEFAULT_TARGET_HORIZON_STEPS = 500
 
 
 class MILPScheduler:
-    def __init__(self, time_scale_ns: float = 1.0):
+    def __init__(self, time_scale_ns: float | None = None, target_horizon_steps: int = DEFAULT_TARGET_HORIZON_STEPS):
         self.time_scale_ns = time_scale_ns
+        self.target_horizon_steps = target_horizon_steps
         self.last_solve: MILPSolveInfo | None = None
 
     def select(self, state: SchedulingState) -> ScheduleDecision:
@@ -46,7 +54,9 @@ class MILPScheduler:
             self.last_solve = MILPSolveInfo("empty", 0.0, 0.0, 0.0)
             return ScheduleDecision()
 
-        durations = [max(1, round(j.exec_time_ns / self.time_scale_ns)) for j in jobs]
+        raw_total_ns = sum(j.exec_time_ns for j in jobs)
+        scale = self.time_scale_ns or max(1.0, raw_total_ns / self.target_horizon_steps)
+        durations = [max(1, round(j.exec_time_ns / scale)) for j in jobs]
         demands = [j.qpu_demand for j in jobs]
         horizon = sum(durations)
 
@@ -97,9 +107,9 @@ class MILPScheduler:
 
         if not result.success:
             self.last_solve = MILPSolveInfo(result.status if hasattr(result, "status") else "failed",
-                                             None, solve_time, None)
+                                             None, solve_time, None, horizon, scale)
             return ScheduleDecision()
-        self.last_solve = MILPSolveInfo("optimal", float(result.fun), solve_time, 0.0)
+        self.last_solve = MILPSolveInfo("optimal", float(result.fun), solve_time, 0.0, horizon, scale)
 
         x = result.x[:n_x]
         available = sorted(state.free_qpu_ids)

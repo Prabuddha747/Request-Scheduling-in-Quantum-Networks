@@ -224,28 +224,27 @@ open interpretation choice. Re-visit if the Zenodo archive's `o.log` file
 (data/reference/zenodo_21060605/data/o.log, not yet inspected) turns out to
 contain the authors' own link-weight values.
 
-## A8. MILP scheduler's time-indexed horizon doesn't scale to raw nanoseconds
+## A8. MILP scheduler's time-indexed horizon doesn't scale to raw nanoseconds — RESOLVED
 **Issue:** `src/dqc/schedulers/milp.py` implements the paper's exact Eq.20-24
 time-indexed RCPSP formulation, but the horizon H = sum(T_j) over integer
 time steps. DQCJob.exec_time_ns values are ~1e5-1e9 ns, so a literal
 nanosecond-granularity horizon would need billions of binary variables --
 computationally infeasible.
-**Current treatment:** `time_scale_ns` constructor parameter rescales/rounds
-durations to a small integer grid before solving (default 1.0 = no
-rescaling, fine only for toy/test instances). The final Assignment still
-carries the job's real, unrounded exec_time_ns.
-**Why it matters:** The paper itself reports MILP results at full scale
-(1000 slots, 10 QPUs, Tables 4/5) — they must have used some discretization
-or a different (non-literal-ns) time unit; this isn't stated in the paper.
-**Impact:** Our MILP scheduler is validated exact (brute-force-matched) on
-tiny toy instances (Phase 4 requirement, done), but running it on real
-compiler-generated DQCJob durations needs a documented, deliberate choice
-of `time_scale_ns` before Phase 7 — too coarse loses makespan precision,
-too fine blows up the variable count.
-**Resolution path:** Not resolved. Pick a `time_scale_ns` (e.g. round to
-the nearest microsecond or coarser) when MILP is actually run against
-real jobs in Phase 7, and disclose the rounding error introduced, per the
-master prompt's "do not silently reduce experiment coverage" rule.
+**Fixed 2026-11-26:** `time_scale_ns` now defaults to `None` (auto), which
+derives a scale EACH call from the current queue's own total duration,
+targeting `target_horizon_steps` (default 500) discrete steps regardless of
+the actual ns magnitudes. The final Assignment still carries the job's
+real, unrounded exec_time_ns — only the internal search grid is coarsened.
+**Verified:** solving the FULL 30-template catalogue (all queued at once,
+10 QPUs) — the exact scenario that previously forced the Phase 7 smoke test
+to use a restricted 5/7-qubit subset — now completes in ~3s (horizon
+auto-scaled to 508 steps, status=optimal, gap=0.0).
+**Remaining, smaller caveat:** the paper itself reports MILP results at
+full scale (1000 slots, Tables 4/5) with no stated discretization — we
+still don't know if our chosen `target_horizon_steps=500` default
+resembles whatever granularity the authors effectively used. Precision vs.
+tractability is now an explicit, tunable tradeoff (`target_horizon_steps`)
+instead of a blocking unknown.
 
 ## A9. PPO critic needs a fixed-size input; paper gives no max queue length
 **Issue:** The actor is per-job (works for any queue length), but the

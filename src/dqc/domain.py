@@ -63,10 +63,19 @@ class ScheduleDecision:
 
 @dataclass(frozen=True)
 class SchedulingState:
-    """Input to Scheduler.select — paper Eq. 8-9: B(t)/R(t) = busy/free QPUs."""
+    """Input to Scheduler.select — paper Eq. 8-9: B(t)/R(t) = busy/free QPUs.
+
+    link_weight is only consulted by node-selection-aware schedulers
+    (EPR Node Selection, PPO Node Selection, Algorithm 3). The paper does
+    not pin down what numeric quantity w(u,v) is; we use t_state_ns
+    (Eq. 2) as the natural "lower is better" interpretation -- an
+    EXTENSION-level interpretation choice, not a fabricated result (see
+    docs/assumptions_register.md).
+    """
     time_ns: float
     free_qpu_ids: frozenset[str]
     queued_jobs: tuple[DQCJob, ...]
+    link_weight: dict[tuple[str, str], float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

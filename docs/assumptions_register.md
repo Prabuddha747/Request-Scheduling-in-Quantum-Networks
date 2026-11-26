@@ -149,28 +149,44 @@ already in `docs/source_traceability.csv`'s COMPILER row):
 All `DQCJob` instances built by this compiler are `SCHEDULER_MODEL_REPRODUCTION`,
 never `PAPER_REPRODUCTION`, per master-prompt labeling rules.
 
-## A4. Job catalogue construction / truncated-Poisson bounds
+## A4. Job catalogue construction / truncated-Poisson bounds — MOSTLY RESOLVED
 **Issue:** Master prompt notes the paper may omit exact truncation bounds
 for the Poisson arrival distribution and the exact enumerated job catalogue
 (how many distinct circuit instances per type/qubit-count exist in set
 Gamma referenced in Eq. 31-32).
 **Why it matters:** Needed to regenerate the authors' exact job queue traces.
-**Current treatment:** Unresolved. The downloaded Zenodo archive
-(`data/reference/zenodo_21060605/data/*.json`) contains the actual job
-traces used to produce the paper's tables — these can be used as ground
-truth input data directly, sidestepping trace-regeneration ambiguity for
-regression tests, but a *fresh* 1000-slot paper-matrix run (Phase 7) still
-needs the arrival/catalogue rules spelled out if we are not simply replaying
-the archived traces.
-**Resolution path:** CHECKED (2026-11-26) — `data/*.json` files contain only
-per-scheduler, per-metric result series (`Makespan`, `SNP`, `Fairness`,
-`QPU Utilization`, `Network Utilization`), one list per metric, no raw
-per-job records (no qubit count, EPR demand, or arrival trace). So the
-archive cannot be replayed as ground-truth input; it is only useful for
-output-level regression comparison (Phase 9 / Table 4-13 cross-check), not
-for resolving the job catalogue or truncation bounds. This assumption stays
-open — still blocks exact trace regeneration until the catalogue/truncation
-bounds are found in the paper body or cited references ([4],[6],[21]).
+**Checked (2026-11-26):** `data/*.json` files contain only per-scheduler,
+per-metric result series (no raw per-job records) — not useful as a replay
+trace. **But** `data/reference/zenodo_21060605/data/o.log` (215,993 lines)
+is the authors' actual Qoala-based run log, and it IS a goldmine:
+- **Job catalogue (set Gamma) found exactly:** the log's job names are
+  `{ghz,graph,qaoa,qft,vqe}_{5,7,9,11,13,15}` — i.e. all 5 circuit types ×
+  6 ODD qubit counts (5,7,9,11,13,15), exactly 30 distinct job templates.
+  The paper's "5-15 qubits" is not a continuous range nor all integers —
+  it's specifically the odd counts in that range. This fully resolves the
+  job-catalogue part of A4.
+- **Total QPU count found:** node ids in the log run `node0`..`node9` — the
+  network has exactly **10 QPUs**, resolving the previously-unspecified
+  "QPU capacities" parameter (master prompt flagged this as unresolved).
+- **Slot/condition count confirmed:** exactly 4000 `time slot:` lines =
+  4 conditions (λ∈{5,10} × selection∈{random,biased}) × 1000 slots each,
+  matching the paper's reported 1,000-slot evaluation per condition exactly.
+- **PPO model files confirmed:** log lines show `Loading PPO model:
+  ppo_weights_{rate}_r.pth` for various integer rates, confirming separate
+  trained models per arrival rate as the paper states.
+- **Truncated-Poisson bounds:** NOT found in this log (it shows realized
+  arrivals per slot like `arrivals: 8`, not the generating distribution's
+  truncation bounds) — this specific sub-item of A4 stays open.
+**Remaining gap:** per-job EPR demand (E_j) is still not in this log output
+(only job name + assigned node list per round), so our mini-compiler is
+still the only way to get E_j/T_j; but we now know with certainty which
+30 (circuit_type, qubit_count) pairs to run it on, and that the network has
+10 QPUs. This removes the single biggest ambiguity blocking a fresh
+1000-slot paper-matrix run in Phase 7.
+**Status:** Catalogue and network size resolved; only the exact Poisson
+truncation bounds remain open (low-impact: arrivals are visible per slot in
+the log if we need to characterize the empirical distribution directly
+rather than regenerate it from a formula).
 
 ## A5. Zenodo record used by the master prompt was the wrong version
 **Issue:** The master prompt pointed at
@@ -186,6 +202,27 @@ paper's Table 5 (EPR, lambda=10, tau=0.5: makespan mean 38.4979s / std
 18.6104s) and matched exactly.
 **Resolution path:** Closed. Keep 19108938 unused; note it only so a future
 session doesn't re-fetch it by mistake.
+
+## A7. Algorithm 3's link weight w(u,v) is not numerically defined
+**Issue:** Algorithm 3 (node selection) minimizes "sum of pairwise link
+weights" but the paper never states what w(u,v) actually is numerically —
+only that it reflects link quality.
+**Why it matters:** EPR (Node Selection) and PPO (Node Selection) both
+depend on this to pick which QPUs to use.
+**Current treatment:** `src/dqc/schedulers/node_selection.py` is weight-
+agnostic (takes `link_weight: dict[(str,str), float]` as a parameter); the
+caller (`SchedulingState.link_weight`) is expected to populate it. We use
+`t_state_ns` (Eq.2, lower = better/faster link) as the natural "lower is
+better" interpretation when building that dict.
+**Impact:** This is a declared interpretation of an underspecified
+function, not an invented numeric result — but it means EPR/PPO
+Node-Selection outputs are `SCHEDULER_MODEL_REPRODUCTION` at best for the
+node-choice *logic*, pending confirmation that t_state_ns (vs. e.g.
+inverse-fidelity, or (1-fidelity)) is the right interpretation.
+**Resolution path:** No further paper source found for this; stays an
+open interpretation choice. Re-visit if the Zenodo archive's `o.log` file
+(data/reference/zenodo_21060605/data/o.log, not yet inspected) turns out to
+contain the authors' own link-weight values.
 
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3

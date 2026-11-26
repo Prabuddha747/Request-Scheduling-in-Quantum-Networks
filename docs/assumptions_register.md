@@ -268,6 +268,64 @@ Assignment outputs.
 Flagging here is enough so a future reader doesn't mistake 32 for a sourced
 constant.
 
+## A10. Truncated-Poisson arrival bounds are not stated in the paper
+**Issue:** The paper says arrivals follow a truncated Poisson distribution
+with "specified lower and upper bounds" but never states what they are.
+**Current treatment:** `src/dqc/workload.generate_trace()` defaults to
+`[0, 3*lambda]`, a generous bound chosen so truncation rarely binds for
+typical Poisson tail behavior, not derived from any source.
+**Impact:** Affects the realized arrival-count distribution at the tails;
+low-impact for mean-based comparisons, more relevant for any analysis of
+rare high-load slots.
+**Resolution path:** Not resolved; no source found. Exposed as an explicit
+`truncation_bounds` parameter so a future run can override it if a source
+is ever found (e.g. re-reading refs [4]/[6]/[21] in more depth).
+
+## A11. Per-job target QPU count (compiler's k) has no paper source
+**Issue:** The mini-compiler (ref[8]) needs a target partition count k as
+an INPUT, but neither paper states what k the authors used per job/circuit
+type.
+**Current treatment:** `src/dqc/workload._default_qpu_count()` uses
+`round(n_qubits/5)` capped to the network size (10) -- an arbitrary but
+documented heuristic, not sourced.
+**Impact:** Directly changes every job's R_j/E_j/T_j (via the compiler),
+so it's the single biggest source-fidelity gap in the whole workload
+pipeline. Different k choices could noticeably shift all five metrics.
+**Resolution path:** Not resolved; no source found. This is the most
+important remaining item if closer paper-number matching is ever wanted —
+worth revisiting before treating any metric results as more than
+`SCHEDULER_MODEL_REPRODUCTION`.
+
+## A12. Phase 7 smoke run: a real cross-scheduler run, but scoped down
+**What ran (2026-11-26):** `scripts/run_smoke_experiment.py` — all 8
+schedulers against the SAME generated trace (paired comparison, seed=7,
+10 slots, λ=3, τ=0, 4 QPUs), using only the catalogue's 5/7-qubit templates
+(10 of the 30 full templates). Results: `results/raw/smoke_*.csv`,
+`results/summary/smoke_experiment_summary.csv`.
+**Why scoped down, explicitly:** the full 30-template catalogue includes
+jobs up to ~7s of simulated exec time (qft_15 at n_qpu_network=10, or
+proportionally large at smaller N); at smoke scale (10 slots, 4 QPUs) this
+backlogs the queue enough to hit two already-documented complexity
+ceilings: ResourcePriorityScheduler's O(2^n) combination search (A-less,
+see its own ponytail comment) and MILPScheduler's time-indexed horizon
+(A8). This is a REAL limitation surfaced by actually running the code, not
+a hypothetical — restricting qubit_counts to (5,7) was the fix for this run.
+**What this run does NOT show:** because the smoke catalogue's jobs all
+have qpu_demand=1 and epr_demand=0, the schedulers barely differentiate
+(FIFO/LIST/EPR/EPR-NS all produce byte-identical summary metrics here) —
+there's no resource contention or EPR-pressure variation at this scope to
+exercise their actual differences. MILP's lower SELP/fairness in this run
+should NOT be compared to the paper's Table 10-13 trends (which show
+MILP/ASAP both low) — this run's ASAP is actually the fairest, the
+opposite pattern, purely an artifact of the narrow smoke scope.
+**Status:** `SCHEDULER_MODEL_REPRODUCTION` / smoke-scale infrastructure
+validation only. The full 1000-slot/10-QPU/full-30-template paper matrix
+(λ∈{5,10}, τ∈{0,0.5}) has NOT been run — it needs: (1) a `time_scale_ns`
+decision for MILP at that scale (A8), (2) a much larger `slot_duration_ns`
+or a redesigned arrival/dispatch scheme to avoid backlog blowup with the
+full catalogue's largest jobs, and (3) a trained PPO policy (A1) rather
+than the untrained network used here. None of that is done yet.
+
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3
 resolves to 3.14.7. A separate Python.framework install at

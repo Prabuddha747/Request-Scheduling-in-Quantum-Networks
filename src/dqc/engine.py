@@ -82,8 +82,11 @@ class SimPyBackend:
     def run_until(self, simulation_time_ns: float) -> None:
         # simpy.Environment.run(until=t) does NOT process events scheduled
         # exactly at t (it stops just short); flush those explicitly so a
-        # job completing exactly at the query time is reflected.
-        self.env.run(until=simulation_time_ns)
+        # job completing exactly at the query time is reflected. It also
+        # rejects until <= now outright, so skip straight to the flush loop
+        # when there's nothing to advance (e.g. querying at t=0).
+        if simulation_time_ns > self.env.now:
+            self.env.run(until=simulation_time_ns)
         while self.env.peek() <= simulation_time_ns:
             self.env.step()
 

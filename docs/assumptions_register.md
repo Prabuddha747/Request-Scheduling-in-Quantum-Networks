@@ -129,6 +129,26 @@ trading fidelity for implementation time.
 4-node sanity-check graph. Added to `docs/phase0_dependency_freeze.txt`.
 No blocker; Phase 2 can proceed with the mini-compiler plan.
 
+**IMPLEMENTED 2026-11-26** — `src/dqc/compiler.py` (56 passing pytest
+invariant tests). Two further simplifications made explicit here (both
+already in `docs/source_traceability.csv`'s COMPILER row):
+1. **TeleGate-only remote-gate handling** — every cross-partition 2-qubit
+   gate costs exactly one EPR pair; the TeleData/TeleGate cost comparison
+   (ref[8] Alg.1, Eq.1) is not implemented because it needs mean qubit
+   decoherence time d̄_t, which neither source paper gives for trapped-ion
+   hardware. This is NOT an invented shortcut — ref[8] Sec.4 itself
+   evaluates a TeleGate-only configuration as one of its two tested modes.
+2. **Local-gate timing constant still missing** (carried over from above):
+   `LOCAL_GATE_TIME_NS = 500_000` borrowed from ref[7]'s color-center
+   2-qubit gate duration, a different hardware platform than the 2026
+   paper's trapped-ion links. This is the one open numeric placeholder left
+   in the whole job-attribute pipeline. Upgrade path: replace if a
+   trapped-ion local-gate time constant is ever sourced (neither paper nor
+   their references [9],[10],[22],[27] give one for *compute* gates, only
+   for entanglement generation).
+All `DQCJob` instances built by this compiler are `SCHEDULER_MODEL_REPRODUCTION`,
+never `PAPER_REPRODUCTION`, per master-prompt labeling rules.
+
 ## A4. Job catalogue construction / truncated-Poisson bounds
 **Issue:** Master prompt notes the paper may omit exact truncation bounds
 for the Poisson arrival distribution and the exact enumerated job catalogue

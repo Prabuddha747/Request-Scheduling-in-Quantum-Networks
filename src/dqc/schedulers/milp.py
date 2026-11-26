@@ -39,8 +39,8 @@ class MILPSolveInfo:
 
 
 DEFAULT_TARGET_HORIZON_STEPS = 500
-DEFAULT_MAX_JOBS_PER_SOLVE = 15
-DEFAULT_SOLVER_TIME_LIMIT_S = 20.0
+DEFAULT_MAX_JOBS_PER_SOLVE = 8
+DEFAULT_SOLVER_TIME_LIMIT_S = 5.0
 
 
 class MILPScheduler:
@@ -77,12 +77,32 @@ class MILPScheduler:
         self.last_solve: MILPSolveInfo | None = None
 
     def select(self, state: SchedulingState) -> ScheduleDecision:
-        jobs = list(state.queued_jobs)[: self.max_jobs_per_solve]
-        capacity = len(state.free_qpu_ids)
-        if not jobs:
+        if not state.queued_jobs:
             self.last_solve = MILPSolveInfo("empty", 0.0, 0.0, 0.0)
             return ScheduleDecision()
 
+        # Adaptive batch-size fallback: a batch that times out (stage-1
+        # solve fails to even find/prove a feasible solution within
+        # solver_time_limit_s) is retried at half the size instead of
+        # giving up or blindly retrying the identical failing instance --
+        # found as a real gap: at high backlog, a SPECIFIC 15-job instance
+        # was observed to deterministically time out every retry (nothing
+        # about the instance changes between retries, so retrying as-is
+        # can never help). A smaller MIP is almost always far easier for
+        # HiGHS to at least prove feasible, even if not provably optimal.
+        batch_size = self.max_jobs_per_solve
+        while True:
+            jobs = list(state.queued_jobs)[:batch_size]
+            decision = self._solve_batch(jobs, state.free_qpu_ids, state.time_ns)
+            if decision is not None or batch_size <= 1:
+                return decision if decision is not None else ScheduleDecision()
+            batch_size = max(1, batch_size // 2)
+
+    def _solve_batch(self, jobs: list, free_qpu_ids: frozenset, time_ns: float) -> ScheduleDecision | None:
+        """Returns None (not ScheduleDecision()) specifically when stage-1
+        failed, so select()'s fallback loop can distinguish "try smaller"
+        from "solved, legitimately nothing to do yet"."""
+        capacity = len(free_qpu_ids)
         raw_total_ns = sum(j.exec_time_ns for j in jobs)
         scale = self.time_scale_ns or max(1.0, raw_total_ns / self.target_horizon_steps)
         durations = [max(1, round(j.exec_time_ns / scale)) for j in jobs]
@@ -133,25 +153,51 @@ class MILPScheduler:
         t0 = _time.perf_counter()
         result = milp(c=c, constraints=constraints, integrality=integrality, bounds=bounds,
                       options={"time_limit": self.solver_time_limit_s})
-        solve_time = _time.perf_counter() - t0
 
         if not result.success:
+            solve_time = _time.perf_counter() - t0
             self.last_solve = MILPSolveInfo("infeasible_or_failed", None, solve_time, None, horizon, scale)
-            return ScheduleDecision()
+            return None
+        best_makespan = result.x[m_idx]
+        solve_time = _time.perf_counter() - t0
+
         gap = float(getattr(result, "mip_gap", 0.0) or 0.0)
         status = "optimal" if getattr(result, "status", 0) == 0 else "time_limit"
-        self.last_solve = MILPSolveInfo(status, float(result.fun), solve_time, gap, horizon, scale)
+        self.last_solve = MILPSolveInfo(status, float(best_makespan), solve_time, gap, horizon, scale)
 
         x = result.x[:n_x]
-        available = sorted(state.free_qpu_ids)
+        available = sorted(free_qpu_ids)
         assignments = []
+        now_job_indices = set()
         for j, s in enumerate(starts):
             chosen_m = next((m for k, m in enumerate(s) if x[offsets[j] + k] > 0.5), None)
             if chosen_m == 0:  # only jobs starting right now are actionable this call
                 qpu_ids, available = available[: demands[j]], available[demands[j]:]
                 assignments.append(Assignment(
                     job_id=jobs[j].id, qpu_ids=tuple(qpu_ids),
-                    start_time_ns=state.time_ns,
-                    completion_time_ns=state.time_ns + jobs[j].exec_time_ns,
+                    start_time_ns=time_ns,
+                    completion_time_ns=time_ns + jobs[j].exec_time_ns,
                 ))
+                now_job_indices.add(j)
+
+        # Greedy top-up (NOT an exact tie-break -- that needs a second MIP
+        # solve, found to occasionally be as slow as the first on hard
+        # instances, see A15): the optimal-M solution can leave capacity
+        # idle at t=0 purely because the MIP had no reason to prefer an
+        # earlier start among several M-optimal schedules. Cheaply pack in
+        # any OTHER batch job that still fits in what's left, at zero
+        # solver cost. This doesn't guarantee the lexicographically-best
+        # schedule, but it is what fixes the real symptom (capacity sitting
+        # idle while jobs wait) without doubling solve time.
+        for j, job in enumerate(jobs):
+            if j in now_job_indices:
+                continue
+            if demands[j] <= len(available):
+                qpu_ids, available = available[: demands[j]], available[demands[j]:]
+                assignments.append(Assignment(
+                    job_id=job.id, qpu_ids=tuple(qpu_ids),
+                    start_time_ns=time_ns,
+                    completion_time_ns=time_ns + job.exec_time_ns,
+                ))
+
         return ScheduleDecision(assignments=tuple(assignments))

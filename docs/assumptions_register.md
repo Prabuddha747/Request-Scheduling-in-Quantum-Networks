@@ -455,14 +455,43 @@ silently dropped again. Added a regression test
 (`tests/unit/test_experiment_no_silent_drop.py`) with a scheduler that
 stalls intermittently (must recover) and one that stalls forever (must
 raise, not return an incomplete result).
-**Status:** all four issues are now either fixed at the root
-(Resource-Priority's DP, the silent-drop bug) or handled as an explicit,
-disclosed, honestly-logged tradeoff (MILP's time limit + max_jobs_per_solve
-cap). The condition-matrix run (`scripts/run_matrix_experiment.py`) was
-RE-RUN after this fix to get a dataset with no silently-dropped jobs — see
-`results/raw/matrix_*.csv` and `results/summary/matrix_experiment_summary.csv`.
-Still 30 slots/condition and 1 seed, not the paper's 1000 slots / repeated
-seeds — a disclosed reduction, not a hidden one.
+**Fifth issue, the real culprit, found after much more digging:** the
+makespan-only MILP objective is indifferent among many equally-optimal
+schedules, so HiGHS can return one that starts almost nothing at t=0 even
+when capacity is free -- since this scheduler only acts on jobs with
+chosen_m==0 per call, that silently starved the queue under heavy backlog
+(λ=10, τ=0.5 biases toward large/slow jobs, worsening it). Two more
+elaborate fixes were tried and abandoned once measured, in order:
+- A weighted single objective (M*BIG_WEIGHT + sum(start times)) -- found to
+  be unreliable: HiGHS's MIP gap tolerance is relative to the COMBINED
+  objective scale, so it can declare "optimal enough" without ever
+  minimizing the small secondary term.
+- An exact two-stage lexicographic solve (solve for M*, then re-solve with
+  M fixed, minimizing total start time) -- exact, but doubles solver calls,
+  and the SECOND solve (equality-constrained) was itself observed to
+  occasionally be as slow as the first on hard instances. Measured directly
+  running past several minutes with no improvement.
+**Final, shipped fix:** dropped both of the above. `max_jobs_per_solve`
+default lowered 15→8 and `solver_time_limit_s` default lowered 20→5 (so the
+existing adaptive batch-shrinking fallback engages quickly instead of
+waiting 20s per failed attempt), plus a cheap, inexact greedy top-up after
+the single makespan-only solve: pack in any other batch job that still fits
+in leftover capacity, at zero extra solver cost. This is NOT a guaranteed
+optimal tie-break, but it fixes the actual symptom (idle capacity while
+jobs wait) for free. **Verified against the exact case that previously
+stalled for 50+ minutes with no result**: λ=10, τ=0.5, full 30-slot/
+30-template run now completes in 67s with 307/307 jobs scheduled, no stall,
+no silent drop.
+**Status:** all five issues are now either fixed at the root
+(Resource-Priority's DP, the silent-drop bug, the greedy top-up) or handled
+as an explicit, disclosed, honestly-logged tradeoff (MILP's smaller batch/
+time-limit defaults trade a small amount of per-call optimality for
+reliable throughput under heavy backlog). The condition-matrix run
+(`scripts/run_matrix_experiment.py`) should be re-run once more with this
+final fix to get a dataset reflecting it — see `results/raw/matrix_*.csv`
+and `results/summary/matrix_experiment_summary.csv` for whichever run is
+currently on disk. Still 30 slots/condition and 1 seed, not the paper's
+1000 slots / repeated seeds — a disclosed reduction, not a hidden one.
 
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3

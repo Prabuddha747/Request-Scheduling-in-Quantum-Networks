@@ -60,12 +60,53 @@ def test_milp_logs_solve_diagnostics():
     assert scheduler.last_solve.optimality_gap == 0.0
 
 
+def test_milp_falls_back_to_smaller_batch_when_full_batch_times_out(monkeypatch):
+    """Regression test for a real finding: at high backlog, a specific
+    15-job MIP instance was observed to deterministically fail (time out
+    without even a feasible incumbent) on every retry -- retrying the
+    identical instance can never help. The scheduler must shrink the batch
+    and retry smaller, not give up or loop forever on the same instance."""
+    import dqc.schedulers.milp as milp_mod
+
+    real_milp = milp_mod.milp
+    calls = []
+
+    def flaky_milp(c, constraints, integrality, bounds, options=None):
+        calls.append(len(c))
+        # simulate: any batch of size > 2 variables worth "fails" every time
+        if len(c) > 5:
+            class Failed:
+                success = False
+            return Failed()
+        return real_milp(c=c, constraints=constraints, integrality=integrality, bounds=bounds, options=options)
+
+    monkeypatch.setattr(milp_mod, "milp", flaky_milp)
+    jobs = [_job(f"j{i}", 1, 2) for i in range(8)]
+    state = SchedulingState(time_ns=0, free_qpu_ids=frozenset({"q0", "q1"}), queued_jobs=tuple(jobs))
+    decision = MILPScheduler(max_jobs_per_solve=8).select(state)
+    assert len(decision.assignments) >= 1  # eventually succeeded at a smaller batch size
+    assert len(calls) > 1  # actually retried at a smaller size, didn't just fail once
+
+
 def test_milp_empty_queue_returns_empty_decision():
     state = SchedulingState(time_ns=0, free_qpu_ids=frozenset({"q0"}), queued_jobs=())
     scheduler = MILPScheduler()
     decision = scheduler.select(state)
     assert decision.assignments == ()
     assert scheduler.last_solve.status == "empty"
+
+
+def test_milp_tiebreaks_toward_starting_jobs_now():
+    """Regression test for a real bug: several small jobs that easily fit
+    together within capacity, all tied on makespan whether or not they all
+    start immediately -- the solver must prefer starting them NOW (this
+    scheduler only acts on jobs with chosen_m==0; a tie broken the other
+    way silently starves the queue even though nothing is overloaded,
+    exactly as observed in a real experiment run)."""
+    jobs = [_job(f"j{i}", 1, 2) for i in range(5)]  # 5 jobs, 1 QPU each, same duration
+    state = SchedulingState(time_ns=0, free_qpu_ids=frozenset({"q0", "q1", "q2", "q3", "q4"}), queued_jobs=tuple(jobs))
+    decision = MILPScheduler().select(state)
+    assert len(decision.assignments) == 5  # all 5 fit at once and all should start now
 
 
 def test_milp_only_returns_jobs_starting_now():

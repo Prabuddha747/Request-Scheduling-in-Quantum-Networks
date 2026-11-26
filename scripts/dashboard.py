@@ -36,8 +36,8 @@ LABEL_NOTE = (
     "`docs/assumptions_register.md` for every declared assumption."
 )
 
-tab_overview, tab_formulas, tab_results, tab_assumptions = st.tabs(
-    ["Overview", "Formulas", "Results", "Assumptions & Scope"]
+tab_findings, tab_overview, tab_formulas, tab_results, tab_assumptions = st.tabs(
+    ["Findings", "Overview", "Formulas", "Results", "Assumptions & Scope"]
 )
 
 # ---------------------------------------------------------------- Overview
@@ -60,6 +60,9 @@ with tab_overview:
    trained), ASAP — each implementing the paper's own Algorithm 1-5.
 5. **Five metrics** (`src/dqc/metrics.py`) — Makespan, QPU Utilization,
    Non-Local Gate Rate, SELP, Fairness (paper Eq.12-19).
+
+See the **Findings** tab for this project's own result charts: PPO training
+curves and per-metric scheduler comparisons from the real experiment runs.
 """
     )
     st.header("Source material")
@@ -108,6 +111,43 @@ with tab_formulas:
     st.caption("Eq. 26 — masked softmax action selection over job logits (κ=1).")
     st.latex(r"r = -R_{lat} + \iota R_{EPR}, \quad \iota=0.3,\ \beta=0.5,\ \gamma=0.8")
     st.caption("Eq. 29 — integrated training reward. Verified in tests against an independent hand-reconstruction.")
+
+# ---------------------------------------------------------------- Findings
+with tab_findings:
+    st.header("Scheduler comparison across all 5 metrics (this project's runs)")
+    matrix_path = SUMMARY_DIR / "matrix_experiment_summary.csv"
+    if matrix_path.exists():
+        mdf = pd.read_csv(matrix_path)
+        mdf["condition"] = "λ=" + mdf["lambda"].astype(str) + ", τ=" + mdf["tau"].astype(str)
+        condition = st.selectbox("Condition", sorted(mdf["condition"].unique()))
+        cdf = mdf[mdf["condition"] == condition].set_index("scheduler")
+        metric_cols = ["makespan_ns", "qpu_utilization", "non_local_gate_rate", "selp", "fairness"]
+        for metric in metric_cols:
+            st.subheader(metric)
+            st.bar_chart(cdf[[metric]])
+        st.caption(
+            "Real output of scripts/run_matrix_experiment.py — full 30-template "
+            "catalogue, heterogeneous links, trained PPO. See docs/assumptions_register.md "
+            "A14/A15 for scope and known limitations of this run."
+        )
+    else:
+        st.info("No matrix experiment results yet — run scripts/run_matrix_experiment.py.")
+
+    st.header("PPO training curves")
+    st.markdown(
+        "Real per-update training logs from `scripts/train_ppo.py` "
+        "(`results/raw/ppo_training_lambda_{5,10}.csv`) — reward, policy "
+        "loss, value loss, entropy, and learning rate across the 100 PPO "
+        "updates run for each arrival rate (see docs/assumptions_register.md A13)."
+    )
+    for lam in (5, 10):
+        path = ROOT / "results" / "raw" / f"ppo_training_lambda_{lam}.csv"
+        if path.exists():
+            df = pd.read_csv(path)
+            st.subheader(f"λ={lam}")
+            st.line_chart(df.set_index("update")[["mean_reward", "policy_loss", "value_loss", "entropy"]])
+        else:
+            st.info(f"No training log found for λ={lam} yet — run scripts/train_ppo.py.")
 
 # ---------------------------------------------------------------- Results
 with tab_results:

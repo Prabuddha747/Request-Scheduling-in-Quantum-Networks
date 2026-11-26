@@ -365,6 +365,48 @@ shown here plus deciding per-rate hyperparameter stability, not attempted.
 **Status:** `SCHEDULER_MODEL_REPRODUCTION`, mechanics-and-training-complete
 but intentionally narrow in scope; labeled as such everywhere it's used.
 
+## A14. Full-catalogue Phase 7 run found and fixed a real runner bug
+**What ran (2026-11-26):** `scripts/run_full_catalogue_experiment.py` — all
+8 schedulers (including the TRAINED λ=5 PPO checkpoint from A13, not a
+random network) against one shared trace, full 30-template catalogue,
+10 QPUs, 10 slots, λ=5, τ=0, seed=7. 45/45 jobs scheduled by every
+scheduler. Results: `results/raw/fullcat_*.csv`,
+`results/summary/fullcatalogue_experiment_summary.csv`.
+**Bug found and fixed:** the experiment runner's drain loop (the phase
+after all slots' arrivals, waiting for remaining jobs to finish) called
+`dispatch()` — i.e. re-invoked the scheduler — after EVERY SINGLE job
+completion, regardless of whether that scheduler wants per-release
+reinvocation (Table 1's "Update" column: only ASAP does;
+FIFO/LIST/EPR/Resource-Priority/MILP/PPO all update "at end of parallelized
+job set"). With a real backlog, this meant MILP got re-solved from scratch
+dozens of times against a large remaining queue, and appeared to hang
+(>6 minutes with no completion). Fixed in `src/dqc/experiment.py`: for
+non-reinvoke schedulers, the drain loop now waits for the WHOLE currently-
+dispatched batch to finish (max completion time of in-flight jobs) before
+calling the scheduler again, instead of waking on every single completion.
+This is a genuine correctness fix matching the paper's own Table 1
+semantics, not a workaround — ASAP's behavior (which DOES want per-release
+reinvocation) is unaffected.
+**After the fix:** the full run completed in under 2 minutes. Makespans
+ranged 135-149s (simulated); MILP had by far the lowest non-local-gate-rate
+(0.044) and lowest SELP (0.006) of all 8 schedulers — directionally
+consistent with the paper's own finding that MILP trades SELP/fairness for
+pure makespan optimization (paper Sec.7.2.4), though the absolute numbers
+aren't comparable (different scale, different job catalogue realization,
+homogeneous link model — see below).
+**Known remaining limitation in this run:** `link_weight` was built as a
+single homogeneous "Medium" value for every QPU pair (not a heterogeneous
+per-pair assignment), so EPR (Node Selection) produced IDENTICAL output to
+plain EPR, and PPO (Node Selection)'s node choices are likewise not
+exercising real link-quality tradeoffs. The paper's network is explicitly
+heterogeneous (Sec.3.2); assigning real heterogeneous per-pair link
+qualities is not done yet — would need a declared topology-assignment rule
+(another unspecified-by-the-paper parameter, similar in kind to A7/A11).
+**Status:** `SCHEDULER_MODEL_REPRODUCTION`. Still not the full 1000-slot/
+λ∈{5,10}/τ∈{0,0.5} paper matrix (that's ~100x more slots across 4
+conditions) — this is a correctness/scale checkpoint on the way there, not
+the final experiment.
+
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3
 resolves to 3.14.7. A separate Python.framework install at

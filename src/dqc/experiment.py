@@ -1,10 +1,11 @@
 """Experiment runner: WorkloadTrace -> Scheduler -> SimPyBackend -> per-job
 records. Phase 7 (master prompt Sec.6/10).
 
-ponytail: this is the SMOKE-SCALE runner the master prompt's own gate order
-requires before any larger matrix (Phase 7: "First run smoke tests: 10
-slots, one seed, small QPU count"). It has not been proven at the full
-1000-slot/10-QPU scale -- see docs/assumptions_register.md.
+ponytail: this started as the SMOKE-SCALE runner the master prompt's own
+gate order requires (Phase 7: "First run smoke tests: 10 slots, one seed,
+small QPU count"), then was verified against the full 30-template catalogue
+at 10 slots/10 QPUs (see docs/assumptions_register.md A14) -- not yet the
+full 1000-slot matrix, but no longer limited to a restricted job subset.
 
 `slot_duration_ns` (when arrivals happen relative to the engine's
 continuous ns clock) is an implementation parameter neither paper source
@@ -83,12 +84,25 @@ def run_trace(
                 backend.run_until(backend.env.peek())
                 dispatch()
 
+    def next_wake_time() -> float:
+        # ASAP-style schedulers want every single release event; everyone
+        # else (Table 1's "Update: end of parallelized job set") should
+        # only be re-invoked once the WHOLE currently-dispatched batch has
+        # finished -- re-running an expensive scheduler (MILP, Resource-
+        # Priority) after every individual completion, against a growing
+        # backlog, is needlessly slow and not what those schedulers' own
+        # Update semantics call for.
+        if reinvoke_on_release:
+            return backend.env.peek()
+        in_flight = [r.completion_time_ns for r in records.values() if r.completion_time_ns > backend.env.now]
+        return max(in_flight) if in_flight else backend.env.peek()
+
     for _ in range(MAX_DRAIN_ITERATIONS):
         dispatch()
         idle = not pending and backend.snapshot().free_qpu_ids == frozenset(qpu_ids)
         if idle:
             break
-        next_event = backend.env.peek()
+        next_event = next_wake_time()
         if next_event == float("inf"):
             break
         backend.run_until(next_event)

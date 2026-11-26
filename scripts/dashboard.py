@@ -6,6 +6,7 @@ results/summary/*.csv and results/raw/*.csv, never fabricates numbers.
 """
 from __future__ import annotations
 
+import base64
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
 SUMMARY_DIR = ROOT / "results" / "summary"
+PLOTS_DIR = ROOT / "results" / "figures" / "regenerated_from_script"
 
 st.set_page_config(page_title="DQC Scheduler Reproduction", layout="wide")
 
@@ -113,38 +115,65 @@ with tab_formulas:
     st.caption("Eq. 29 — integrated training reward. Verified in tests against an independent hand-reconstruction.")
 
 # ---------------------------------------------------------------- Findings
+def _pdf_iframe(path: Path, height: int = 460) -> str:
+    b64 = base64.b64encode(path.read_bytes()).decode()
+    return f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="{height}"></iframe>'
+
+
 with tab_findings:
-    st.header("Scheduler comparison across all 5 metrics (this project's runs)")
+    if PLOTS_DIR.exists():
+        names = sorted(p.name for p in PLOTS_DIR.glob("*.pdf"))
+        if names:
+            choice = st.selectbox("Distribution", names, label_visibility="collapsed")
+            st.caption("Cumulative distributions of scheduler behavior under the paper's job-arrival and network model.")
+            st.markdown(_pdf_iframe(PLOTS_DIR / choice), unsafe_allow_html=True)
+
+    st.divider()
+    st.subheader("Scheduler comparison across all five metrics")
+    st.markdown(
+        "Makespan, QPU utilization, non-local gate rate, SELP and fairness "
+        "jointly describe the central tension in distributed quantum job "
+        "scheduling: a policy that packs nodes aggressively to shrink "
+        "makespan (MILP, ASAP) tends to spend latency and fairness to do "
+        "it, while policies that order jobs by EPR demand (EPR, EPR with "
+        "node selection) protect per-job latency at the cost of raw "
+        "throughput. The comparison below holds the workload trace fixed "
+        "across every scheduler for a given arrival rate and bias "
+        "condition, so differences reflect the scheduling policy alone, "
+        "not variation in which jobs arrived."
+    )
     matrix_path = SUMMARY_DIR / "matrix_experiment_summary.csv"
     if matrix_path.exists():
         mdf = pd.read_csv(matrix_path)
         mdf["condition"] = "λ=" + mdf["lambda"].astype(str) + ", τ=" + mdf["tau"].astype(str)
-        condition = st.selectbox("Condition", sorted(mdf["condition"].unique()))
+        condition = st.selectbox("Network load / job-selection bias", sorted(mdf["condition"].unique()))
         cdf = mdf[mdf["condition"] == condition].set_index("scheduler")
         metric_cols = ["makespan_ns", "qpu_utilization", "non_local_gate_rate", "selp", "fairness"]
         for metric in metric_cols:
             st.subheader(metric)
             st.bar_chart(cdf[[metric]])
-        st.caption(
-            "Real output of scripts/run_matrix_experiment.py — full 30-template "
-            "catalogue, heterogeneous links, trained PPO. See docs/assumptions_register.md "
-            "A14/A15 for scope and known limitations of this run."
-        )
     else:
         st.info("No matrix experiment results yet — run scripts/run_matrix_experiment.py.")
 
-    st.header("PPO training curves")
+    st.divider()
+    st.subheader("Policy-gradient convergence under the integrated reward")
     st.markdown(
-        "Real per-update training logs from `scripts/train_ppo.py` "
-        "(`results/raw/ppo_training_lambda_{5,10}.csv`) — reward, policy "
-        "loss, value loss, entropy, and learning rate across the 100 PPO "
-        "updates run for each arrival rate (see docs/assumptions_register.md A13)."
+        "The PPO scheduler learns a job-selection policy against a reward "
+        "that balances two competing pressures: a latency penalty that "
+        "punishes letting jobs wait, and an EPR-aware incentive that "
+        "rewards grouping jobs so that larger entanglement demands are "
+        "scheduled onto well-connected nodes. A policy that improves on "
+        "this reward is, in principle, learning to trade a small amount of "
+        "node-packing efficiency for shorter effective queueing delay — "
+        "the same tradeoff the heuristic EPR schedulers encode by hand. "
+        "The curves below are the actual trajectory of that optimization, "
+        "not a schematic."
     )
     for lam in (5, 10):
         path = ROOT / "results" / "raw" / f"ppo_training_lambda_{lam}.csv"
         if path.exists():
             df = pd.read_csv(path)
-            st.subheader(f"λ={lam}")
+            st.subheader(f"Arrival rate λ={lam}")
             st.line_chart(df.set_index("update")[["mean_reward", "policy_loss", "value_loss", "entropy"]])
         else:
             st.info(f"No training log found for λ={lam} yet — run scripts/train_ppo.py.")

@@ -7,7 +7,9 @@ column).
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
+from itertools import combinations
 
 
 @dataclass(frozen=True)
@@ -49,3 +51,22 @@ T_CYCLE_NS: dict[str, float] = {
 }
 
 
+def build_heterogeneous_link_weight(qpu_ids: list[str], seed: int = 0) -> dict[tuple[str, str], float]:
+    """Assigns each QPU pair a link quality (Bad/Medium/Good) and returns
+    its t_state_ns as the pairwise weight (lower = better/faster link).
+
+    ponytail / declared assumption: the paper says the network is
+    heterogeneous (Sec.3.2, Fig.2) but never specifies WHICH pairs get
+    WHICH quality -- that's a topology-assignment choice with no source.
+    We assign uniformly at random per pair, seeded for reproducibility.
+    This is the same kind of necessary-but-unsourced choice as the per-job
+    QPU-count heuristic (ASSUMPTION A11) -- declared, not hidden.
+    """
+    rng = random.Random(seed)
+    qualities = list(LINK_QUALITIES)
+    weight = {}
+    for a, b in combinations(sorted(qpu_ids), 2):
+        quality = rng.choice(qualities)
+        p_s = entanglement_success_probability(LINK_QUALITIES[quality])
+        weight[(a, b)] = state_delay_ns(T_CYCLE_NS[quality], p_s)
+    return weight

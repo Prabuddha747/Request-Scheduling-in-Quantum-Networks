@@ -21,6 +21,7 @@ from dqc.domain import DQCJob, SchedulingState, WorkloadTrace
 from dqc.engine import SimPyBackend
 
 MAX_DRAIN_ITERATIONS = 100_000
+MAX_STALL_RETRIES = 10
 
 
 @dataclass(frozen=True)
@@ -97,14 +98,36 @@ def run_trace(
         in_flight = [r.completion_time_ns for r in records.values() if r.completion_time_ns > backend.env.now]
         return max(in_flight) if in_flight else backend.env.peek()
 
+    stall_retries = 0
     for _ in range(MAX_DRAIN_ITERATIONS):
+        before = len(records)
         dispatch()
         idle = not pending and backend.snapshot().free_qpu_ids == frozenset(qpu_ids)
         if idle:
             break
         next_event = next_wake_time()
         if next_event == float("inf"):
+            # No engine event is pending AND nothing is in-flight, yet jobs
+            # remain queued -- the scheduler made zero progress this round
+            # despite (by construction) having free capacity to try again.
+            # This is a real stall, e.g. a time-limited MILP solve that
+            # happened to return a sub-optimal incumbent scheduling nothing
+            # immediately (non-deterministic: HiGHS's time-limited search
+            # can differ run to run). NEVER silently drop the remaining
+            # jobs -- retry a bounded number of times (the non-determinism
+            # can resolve on a retry), then fail loudly rather than return
+            # an incomplete, silently-wrong result.
+            if len(records) == before:
+                stall_retries += 1
+                if stall_retries > MAX_STALL_RETRIES:
+                    raise RuntimeError(
+                        f"scheduler made no progress for {MAX_STALL_RETRIES} consecutive "
+                        f"attempts with {len(pending)} job(s) still queued and no pending "
+                        "engine events -- refusing to silently drop them."
+                    )
+                continue
             break
+        stall_retries = 0
         backend.run_until(next_event)
     else:
         raise RuntimeError("drain loop did not converge within MAX_DRAIN_ITERATIONS")

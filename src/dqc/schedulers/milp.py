@@ -39,16 +39,45 @@ class MILPSolveInfo:
 
 
 DEFAULT_TARGET_HORIZON_STEPS = 500
+DEFAULT_MAX_JOBS_PER_SOLVE = 15
+DEFAULT_SOLVER_TIME_LIMIT_S = 20.0
 
 
 class MILPScheduler:
-    def __init__(self, time_scale_ns: float | None = None, target_horizon_steps: int = DEFAULT_TARGET_HORIZON_STEPS):
+    """ponytail: `max_jobs_per_solve` caps the per-call MIP instance size.
+    Unlike target_horizon_steps (a time-grid coarseness/precision tradeoff),
+    this exists because real MIP solve time does NOT scale predictably with
+    instance size -- a burst of 20-30+ queued jobs can make a single HiGHS
+    solve take an unpredictable amount of time (observed: minutes, not the
+    seconds a similarly-sized smaller instance takes). Solving only the
+    oldest `max_jobs_per_solve` queued jobs each call (remaining jobs wait
+    for a later call, exactly like any rolling-horizon MILP scheduler in
+    practice) keeps solve time bounded and predictable. Upgrade path: raise
+    this if a given machine's HiGHS build handles larger instances reliably.
+
+    `solver_time_limit_s` is a second, independent safety net: even at a
+    capped instance size, a SPECIFIC instance can occasionally be a hard
+    MIP for HiGHS's branch-and-bound (observed directly: one real instance
+    here ran past several minutes with no sign of stopping, vs. ~1-4s
+    typical). HiGHS is told to stop after this many seconds and return its
+    best incumbent; `MILPSolveInfo.status` becomes "time_limit" and
+    `optimality_gap` reports HiGHS's own relative MIP gap at cutoff (not
+    0.0 -- the master prompt requires logging solver status/gap honestly,
+    so a time-limited solve must never be reported as "optimal")."""
+
+    def __init__(
+        self, time_scale_ns: float | None = None, target_horizon_steps: int = DEFAULT_TARGET_HORIZON_STEPS,
+        max_jobs_per_solve: int = DEFAULT_MAX_JOBS_PER_SOLVE,
+        solver_time_limit_s: float = DEFAULT_SOLVER_TIME_LIMIT_S,
+    ):
         self.time_scale_ns = time_scale_ns
         self.target_horizon_steps = target_horizon_steps
+        self.max_jobs_per_solve = max_jobs_per_solve
+        self.solver_time_limit_s = solver_time_limit_s
         self.last_solve: MILPSolveInfo | None = None
 
     def select(self, state: SchedulingState) -> ScheduleDecision:
-        jobs = list(state.queued_jobs)
+        jobs = list(state.queued_jobs)[: self.max_jobs_per_solve]
         capacity = len(state.free_qpu_ids)
         if not jobs:
             self.last_solve = MILPSolveInfo("empty", 0.0, 0.0, 0.0)
@@ -102,14 +131,16 @@ class MILPScheduler:
         bounds = Bounds(lb=np.zeros(n_vars), ub=np.concatenate([np.ones(n_x), [horizon]]))
 
         t0 = _time.perf_counter()
-        result = milp(c=c, constraints=constraints, integrality=integrality, bounds=bounds)
+        result = milp(c=c, constraints=constraints, integrality=integrality, bounds=bounds,
+                      options={"time_limit": self.solver_time_limit_s})
         solve_time = _time.perf_counter() - t0
 
         if not result.success:
-            self.last_solve = MILPSolveInfo(result.status if hasattr(result, "status") else "failed",
-                                             None, solve_time, None, horizon, scale)
+            self.last_solve = MILPSolveInfo("infeasible_or_failed", None, solve_time, None, horizon, scale)
             return ScheduleDecision()
-        self.last_solve = MILPSolveInfo("optimal", float(result.fun), solve_time, 0.0, horizon, scale)
+        gap = float(getattr(result, "mip_gap", 0.0) or 0.0)
+        status = "optimal" if getattr(result, "status", 0) == 0 else "time_limit"
+        self.last_solve = MILPSolveInfo(status, float(result.fun), solve_time, gap, horizon, scale)
 
         x = result.x[:n_x]
         available = sorted(state.free_qpu_ids)

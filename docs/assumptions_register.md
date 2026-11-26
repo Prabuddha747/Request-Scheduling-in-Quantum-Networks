@@ -407,6 +407,63 @@ qualities is not done yet — would need a declared topology-assignment rule
 conditions) — this is a correctness/scale checkpoint on the way there, not
 the final experiment.
 
+## A15. MILP performance ceilings found while scaling up Phase 7
+**What happened:** Running the condition matrix (λ∈{5,10}×τ∈{0,0.5}, full
+30-template catalogue, 30 slots, heterogeneous links) surfaced three real,
+distinct performance issues with MILP and Resource-Priority — none were
+bugs in the paper transcription, all were scale/tooling limits:
+1. **Resource-Priority's O(2^n) powerset search** (the literal transcription
+   of Algorithm 1's pseudocode) became impractically slow once realistic
+   backlog appeared. **Fixed properly** (not capped): rewritten as an exact
+   0/1-knapsack DP (`src/dqc/schedulers/resource_priority.py`) — identical
+   optimal answer (same max-total-demand, tie-break-min-time objective),
+   O(n_jobs × capacity) instead of O(2^n_jobs). Verified against the old
+   brute-force logic on every existing test case.
+2. **MILP's per-call HiGHS overhead** (~0.3-1.2s fixed cost per solver
+   invocation, confirmed via profiling — not from our constraint
+   construction) compounds across the many small calls MILP naturally
+   makes (one call schedules only the single best "wave," so hundreds of
+   jobs mean hundreds of calls). This is an inherent cost of using a real
+   MIP solver this way, not a bug — e.g. 255 jobs → 160 calls → 155s total,
+   which is legitimate compute, not a hang.
+3. **Found and fixed a genuinely slow single MIP instance**: one specific
+   MILP call (λ=10, τ=0.5 condition, capped at 15 jobs) ran past several
+   minutes with HiGHS still searching, vs. ~1-4s for similarly-sized
+   instances — real MIP branch-and-bound worst-case behavior, not
+   predictable from instance size alone. Added `solver_time_limit_s`
+   (default 20s) via HiGHS's own `time_limit` option; `MILPSolveInfo.status`
+   now distinguishes `"optimal"` from `"time_limit"` and reports HiGHS's own
+   `mip_gap` honestly in the latter case (never silently reported as
+   optimal) — this is MORE rigorous logging, not a shortcut, and matches the
+   master prompt's explicit "log solver status...and optimality gap" rule.
+**Fourth issue found, more serious, now fixed:** the first full matrix run
+(with the time limit in place) silently produced an INCOMPLETE result for
+one condition — λ=10,τ=0 MILP scheduled only 301 of 307 arrived jobs, with
+no error raised. Root cause: `experiment.py`'s drain loop treated "no
+pending engine event AND nothing in-flight" as "simulation complete," but
+that can also mean "the scheduler returned an empty decision despite free
+capacity and queued, feasible jobs" — which is exactly what a time-limited
+MILP solve can do when its cutoff incumbent happens to schedule nothing
+immediately (HiGHS's time-limited search is not deterministic run-to-run,
+confirmed: an isolated re-run of the identical seeded trace scheduled
+307/307 with no stall). The loop was silently exiting and dropping the
+stuck jobs from the results with zero indication anything had gone wrong.
+**Fixed:** the drain loop now retries (up to `MAX_STALL_RETRIES=10`) when
+it detects zero progress with jobs still queued, and raises `RuntimeError`
+if the scheduler still can't make progress after that — jobs are never
+silently dropped again. Added a regression test
+(`tests/unit/test_experiment_no_silent_drop.py`) with a scheduler that
+stalls intermittently (must recover) and one that stalls forever (must
+raise, not return an incomplete result).
+**Status:** all four issues are now either fixed at the root
+(Resource-Priority's DP, the silent-drop bug) or handled as an explicit,
+disclosed, honestly-logged tradeoff (MILP's time limit + max_jobs_per_solve
+cap). The condition-matrix run (`scripts/run_matrix_experiment.py`) was
+RE-RUN after this fix to get a dataset with no silently-dropped jobs — see
+`results/raw/matrix_*.csv` and `results/summary/matrix_experiment_summary.csv`.
+Still 30 slots/condition and 1 seed, not the paper's 1000 slots / repeated
+seeds — a disclosed reduction, not a hidden one.
+
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3
 resolves to 3.14.7. A separate Python.framework install at

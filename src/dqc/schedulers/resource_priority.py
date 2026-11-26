@@ -3,10 +3,15 @@ currently queued jobs that fit within the available QPU capacity, pick the
 one maximizing total QPU usage, breaking ties by minimum total estimated
 time.
 
-ponytail: brute-force over the job powerset, O(2^n), exactly matching
-Algorithm 1's own pseudocode ("for all combinations C of J"). Fine for the
-paper's per-slot queue sizes (truncated-Poisson arrivals, a handful of jobs
-per slot); upgrade to a knapsack DP (by qpu_demand) if queues grow large.
+Algorithm 1's own pseudocode is a brute-force powerset search ("for all
+combinations C of J"), O(2^n). That was the literal first implementation
+here, but it made real experiment runs with realistic backlog (20-30+
+queued jobs) impractically slow -- found while running the Phase 7 full-
+catalogue matrix. This is a 0/1-knapsack DP instead: EXACT same answer
+(maximize total qpu_demand subject to capacity, tie-break on minimum total
+exec_time_ns) in O(n_jobs * capacity) instead of O(2^n_jobs). capacity is
+small (bounded by the network's QPU count), so this is fast regardless of
+queue length -- a root-cause fix, not a job-count cap/truncation.
 
 Algorithm 1's outer "while J != empty" loop (repeatedly picking another
 best combo from the remainder) corresponds, in our event-driven engine, to
@@ -15,26 +20,29 @@ single select() call, since each call only sees currently-free QPUs.
 """
 from __future__ import annotations
 
-from itertools import combinations
+from dqc.domain import Assignment, DQCJob, ScheduleDecision, SchedulingState
 
-from dqc.domain import Assignment, ScheduleDecision, SchedulingState
+
+def _best_combo(jobs: tuple[DQCJob, ...], capacity: int) -> tuple[DQCJob, ...]:
+    # dp[c] = (total_demand, total_time, jobs) for the best combo found so
+    # far using at most c capacity.
+    dp: list[tuple[int, float, tuple[DQCJob, ...]]] = [(0, 0.0, ()) for _ in range(capacity + 1)]
+    for job in jobs:
+        if job.qpu_demand > capacity:
+            continue
+        for c in range(capacity, job.qpu_demand - 1, -1):
+            prev_demand, prev_time, prev_combo = dp[c - job.qpu_demand]
+            candidate = (prev_demand + job.qpu_demand, prev_time + job.exec_time_ns, prev_combo + (job,))
+            current = dp[c]
+            if candidate[0] > current[0] or (candidate[0] == current[0] and candidate[1] < current[1]):
+                dp[c] = candidate
+    return max(dp, key=lambda cell: (cell[0], -cell[1]))[2]
 
 
 class ResourcePriorityScheduler:
     def select(self, state: SchedulingState) -> ScheduleDecision:
-        jobs = state.queued_jobs
         capacity = len(state.free_qpu_ids)
-        best_combo: tuple = ()
-        best_util = 0
-        best_time = float("inf")
-        for size in range(1, len(jobs) + 1):
-            for combo in combinations(jobs, size):
-                total_demand = sum(j.qpu_demand for j in combo)
-                if total_demand > capacity:
-                    continue
-                total_time = sum(j.exec_time_ns for j in combo)
-                if total_demand > best_util or (total_demand == best_util and total_time < best_time):
-                    best_combo, best_util, best_time = combo, total_demand, total_time
+        best_combo = _best_combo(state.queued_jobs, capacity)
 
         available = sorted(state.free_qpu_ids)
         assignments = []

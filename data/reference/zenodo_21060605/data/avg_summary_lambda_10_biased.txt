@@ -1,0 +1,58 @@
+=== Simulation Summary ===
+Total slots: 1000
+
+Scheduler: MILP
+Avg Makespan: 32549755598.57
+Avg SNP: 0.32545543480379846
+Avg Fairness: 0.6545367580690722
+Avg QPU Utilization: 0.7811436050270826
+Avg Network Utilization: 0.29068074468271665
+
+Scheduler: FIFO
+Avg Makespan: 39716558842.76553
+Avg SNP: 0.3885398716621563
+Avg Fairness: 0.6689076590112591
+Avg QPU Utilization: 0.6949692573185821
+Avg Network Utilization: 0.24350953561923835
+
+Scheduler: List
+Avg Makespan: 39262615950.99198
+Avg SNP: 0.4185771230346315
+Avg Fairness: 0.6713064484552925
+Avg QPU Utilization: 0.7205042937902384
+Avg Network Utilization: 0.2576974206632934
+
+Scheduler: BruteForce
+Avg Makespan: 35774484609.045
+Avg SNP: 0.5862316494334009
+Avg Fairness: 0.725131685954264
+Avg QPU Utilization: 0.7737960272601975
+Avg Network Utilization: 0.2997360902867158
+
+Scheduler: EPR
+Avg Makespan: 38497908216.82
+Avg SNP: 0.6733332912235335
+Avg Fairness: 0.7815551374557594
+Avg QPU Utilization: 0.7381807925109588
+Avg Network Utilization: 0.2781868797275118
+
+Scheduler: EPRNew
+Avg Makespan: 21703182916.31
+Avg SNP: 0.6453466163777916
+Avg Fairness: 0.7513760593510929
+Avg QPU Utilization: 0.7687280406580326
+Avg Network Utilization: 0.3469351183987633
+
+Scheduler: ASAP
+Avg Makespan: 32764227329.13
+Avg SNP: 0.35092742316518993
+Avg Fairness: 0.6570056697328769
+Avg QPU Utilization: 0.7486598861058067
+Avg Network Utilization: 0.26144347488175346
+
+Scheduler: PPONew
+Avg Makespan: 20524190273.98
+Avg SNP: 0.5573863507430131
+Avg Fairness: 0.7095151279162255
+Avg QPU Utilization: 0.7780093698041799
+Avg Network Utilization: 0.3425032725287496

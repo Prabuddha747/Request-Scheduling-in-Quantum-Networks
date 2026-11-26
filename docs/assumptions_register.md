@@ -17,20 +17,24 @@ access is obtained (Phase 8).
 **Resolution path:** Attempt Qoala/NetSquid install (Phase 8, optional,
 credential-gated). Otherwise stays labeled as model reproduction.
 
-## A2. Link-quality label mismatch between Table 2 and Table 3
+## A2. Link-quality label mismatch between Table 2 and Table 3 — RESOLVED
 **Issue:** Table 2 names link qualities "Bad / Medium / Good". Table 3 names
-them "Worst / Medium / [third row unlabeled in page 12 crop, needs re-check]".
-**Why it matters:** Need to confirm whether Table 3's three rows map 1:1 to
-Table 2's three rows in the same order, since t_cycle/P_s/F/t_state in Table 3
-must be derived from Table 2's eta parameters via Eq. 1-2.
-**Current treatment:** Not implemented; flagged for re-reading page 12 at full
-resolution before coding the network link model.
-**Impact:** Wrong mapping would silently swap link-quality behavior across
-all schedulers that are link-quality-aware (EPR Node Selection, PPO Node
-Selection).
-**Resolution path:** Re-extract Table 3 at high zoom; verify row correspondence
-and recompute Eq.1-2 by hand against the published t_cycle/P_s/F values as a
-unit-test fixture.
+them "Worst / Medium / [third row has no text label in the PDF]".
+**Resolution (2026-11-26, re-read page 12 at full resolution):** Table 3's
+third row is genuinely unlabeled in the typeset PDF (not a crop/OCR
+artifact), but its caption resolves the mapping explicitly: "t_cycle for
+the worst-case link quality is estimated based on the experiments in [27],
+whereas the lowest t_cycle for a high-quality link uses the optimistic
+laboratory setting in [22]." This confirms positional correspondence:
+Table 2 row 1 (Bad) ↔ Table 3 row 1 (Worst); row 2 (Medium) ↔ row 2
+(Medium); row 3 (Good) ↔ row 3 (unlabeled, = "high-quality"/best link,
+t_cycle=2.0e5ns, P_s=2.99e-2, F=0.95, t_state=6.67e6ns).
+**Impact:** None remaining — link-quality-aware schedulers (EPR Node
+Selection, PPO Node Selection) can use Table 3's 3 rows in Table 2's row
+order with no ambiguity.
+**Status:** Closed. Eq.1-2 hand-verification against Table 3's published
+values is still a good unit-test fixture for Phase 2, but the row-mapping
+question itself is settled.
 
 ## A3. QFT and VQE job definitions — RESOLVED (all 5 job types now read)
 **Issue:** Was blocked pending pages 21-22. Now read in full: QAOA (Eq.36-39,

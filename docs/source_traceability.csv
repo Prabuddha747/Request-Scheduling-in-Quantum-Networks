@@ -1,6 +1,6 @@
 item_id,item_name,source_type,paper_page,equation_or_table,exact_source_excerpt_or_summary,implementation_location,status,notes
-EQ1,Entanglement success probability P_s(d),paper_equation,3,Eq. 1,"P_s(d) = (1/2) eta_penalty (eta_ion * eta_FC^{ion->telecom} * eta_det^{telecom})^2 * 10^{-(alpha/10)(d/2)}",TODO,unimplemented,Parameters per-link-quality in Table 2
-EQ2,State delay t_state,paper_equation,3,Eq. 2,t_state = t_cycle / P_s,TODO,unimplemented,Combines cycle time and success probability
+EQ1,Entanglement success probability P_s(d),paper_equation,3,Eq. 1,"P_s(d) = (1/2) eta_penalty (eta_ion * eta_FC^{ion->telecom} * eta_det^{telecom})^2 * 10^{-(alpha/10)(d/2)}",VERIFIED,hand-calc 2026-11-26 using Table2 'Bad' row (eta_FC=0.5 eta_det=0.75 eta_penalty=0.12 eta_ion=0.87 alpha=0.2 d=0.1) gives P_s=6.371e-3 matching Table3 'Worst' row P_s=6.37e-3 exactly,"Confirms Table2<->Table3 positional row mapping (ASSUMPTION A2, resolved); good fixture for Phase 2/5 unit tests"
+EQ2,State delay t_state,paper_equation,3,Eq. 2,t_state = t_cycle / P_s,VERIFIED,hand-calc: 1.8e6ns / 6.371e-3 = 2.826e8ns matching Table3 Worst t_state=2.83e8ns exactly,same fixture as EQ1
 TABLE1,Scheduler summary table,paper_table,9,Table 1,"8 schedulers x {Features Order Nodes-Usage End-Condition Update}",TODO,unimplemented,Drives scheduler end-condition logic (next-job-cannot-be-grouped vs no-jobs-or-no-nodes vs when-nodes-available)
 EQ3-5,Static schedule / mapping pi_t,paper_equation,4,"Eq. 3-6",Graph G=(N,E); pi_t: A_t -> 2^N; union of assignments subset N,TODO,unimplemented,Core domain model for static scheduling step
 EQ7-11,Dynamic schedule,paper_equation,4,Eq. 7-11,"Resource-release-triggered reassignment onto R(t)=N\B(t)",TODO,unimplemented,Drives ASAP scheduler semantics

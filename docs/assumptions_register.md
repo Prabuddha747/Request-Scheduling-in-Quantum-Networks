@@ -118,7 +118,12 @@ Python bindings — not yet verified on arm64/Python 3.12 — plus Algorithm
 `SCHEDULER_MODEL_REPRODUCTION`; or (b) use a simpler declared proxy (e.g.
 R_j/E_j/T_j as a function of circuit type + qubit count, calibrated by hand
 against ref [8]'s reported example numbers) and label it `EXTENSION`,
-trading fidelity for implementation time. Not decided yet — ask the user.
+trading fidelity for implementation time.
+**DECIDED 2026-11-26 (user):** go with (a), the scoped mini-compiler.
+**Verified 2026-11-26:** `pymetis` installs cleanly via pip on arm64/Python
+3.12 (prebuilt wheel, no toolchain needed) and correctly partitions a
+4-node sanity-check graph. Added to `docs/phase0_dependency_freeze.txt`.
+No blocker; Phase 2 can proceed with the mini-compiler plan.
 
 ## A4. Job catalogue construction / truncated-Poisson bounds
 **Issue:** Master prompt notes the paper may omit exact truncation bounds

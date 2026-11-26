@@ -84,6 +84,42 @@ constants as an explicit `EXTENSION`/assumption, clearly distinguished from
 the paper-sourced network-timing portion, and label resulting makespans
 `SCHEDULER_MODEL_REPRODUCTION`.
 
+**Follow-up: obtained and read ref [8] in full** 2026-11-26 (Ferrari,
+Carretta, Amoretti, "A Modular Quantum Compilation Framework for
+Distributed Quantum Computing," IEEE TQE vol.4, 2023, arXiv:2305.02969).
+This is where ref [7]'s "quantum compiler" actually comes from. Findings:
+- **R_j** (QPU count/partition): the circuit's qubit-interaction graph
+  (vertices=qubits, edge weight=number of 2-qubit gates between a pair) is
+  split via METIS multilevel k-way partitioning, then locally refined by a
+  greedy qubit-move pass minimizing cross-partition communication cost. k
+  (the number of QPUs/partitions) is a compiler *input*, not something
+  derived from the circuit — so "R_j required" really means "R_j targeted."
+- **E_j** (EPR pairs): produced by their Algorithm 1 ("Remote Gates
+  Scheduler"), which greedily chooses TeleData vs TeleGate per non-local
+  gate by comparing cost = (n_EPR/n_cov)*(delay/d̄_t) (their Eq.1 — n_EPR =
+  EPR pairs consumed, n_cov = gates covered by that teleportation, delay =
+  link-reuse wait time, d̄_t = mean qubit decoherence time), then counting
+  consumed EPR pairs.
+- **T_j** (depth/execution time): read off the final compiled circuit after
+  a local SWAP-routing pass (Sec.3.3); again an output, not a formula.
+- **Bottom line:** none of R_j/E_j/T_j have closed-form expressions over
+  (circuit type, qubit count) in refs [7] or [8]. Getting them exactly
+  requires actually running this pipeline: build qubit-interaction graph →
+  METIS k-way partition + greedy refinement → Algorithm 1's per-gate
+  TeleData/TeleGate cost rule → local SWAP routing → read off depth/EPR
+  count/partition sizes. This is real, scoped software (not a missing
+  constant), and the authors' own compiler code is not published alongside
+  either paper (no code link found for refs [7]/[8]; only the top-level
+  paper's own Qoala-based evaluation code is on Zenodo).
+**Decision needed before Phase 2 locks in `DQCJob`:** (a) implement a scoped
+version of this mini-compiler (METIS partitioning via `pymetis`/`metis`
+Python bindings — not yet verified on arm64/Python 3.12 — plus Algorithm
+1's cost rule) and label resulting job attributes
+`SCHEDULER_MODEL_REPRODUCTION`; or (b) use a simpler declared proxy (e.g.
+R_j/E_j/T_j as a function of circuit type + qubit count, calibrated by hand
+against ref [8]'s reported example numbers) and label it `EXTENSION`,
+trading fidelity for implementation time. Not decided yet — ask the user.
+
 ## A4. Job catalogue construction / truncated-Poisson bounds
 **Issue:** Master prompt notes the paper may omit exact truncation bounds
 for the Poisson arrival distribution and the exact enumerated job catalogue

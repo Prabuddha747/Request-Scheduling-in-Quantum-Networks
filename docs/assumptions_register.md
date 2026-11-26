@@ -325,6 +325,46 @@ or a redesigned arrival/dispatch scheme to avoid backlog blowup with the
 full catalogue's largest jobs, and (3) a trained PPO policy (A1) rather
 than the untrained network used here. None of that is done yet.
 
+## A13. PPO training loop: real, but reduced and SCHEDULER_MODEL_REPRODUCTION
+**What ran (2026-11-26):** `scripts/train_ppo.py` trained PPO for λ=5 and
+λ=10 (100 update iterations each, buffer=1024, minibatch=64, cosine LR
+1e-3→1e-7, GAE λ=0.95, clip=0.2, value coef 0.5, entropy coef 0.01 — all
+paper-sourced constants). On this M1: λ=5 took 42.5s (peak RSS 314MB),
+λ=10 took 38.6s (peak RSS 314MB). Mean per-episode reward improved
+modestly and genuinely: λ=5 went -0.310→-0.237, λ=10 went -0.392→-0.341
+(both measured, not fabricated — see `results/raw/ppo_training_lambda_{5,10}.csv`).
+Checkpoints saved to `results/checkpoints/ppo_weights_{5,10}.pth`.
+**Found and fixed a real numerical bug along the way:** `build_state_matrix`
+(Eq.25) fed `exec_time_ns` (~1e8-1e9) straight into the network, next to
+`R_j`/`E_j`/`B_j` features that are O(1-100). This made the critic's raw
+output (and thus `value_loss`) blow up to ~1e14 before any training could
+be meaningful. Fixed with a declared `T_J_SCALE_NS=1e7` scaling constant
+in `src/dqc/rl/features.py` — a numerically-necessary implementation detail
+the paper's Eq.25 doesn't mention (it just says the matrix has raw R_j/E_j/
+T_j/B_j values) but that any real implementation needs.
+**Declared interpretation choices (not hidden):**
+- "100 training epochs" is read as 100 outer update iterations consuming
+  one 1024-transition rollout batch each — the paper doesn't define what an
+  "epoch" means for an online RL loop that generates its own data.
+- One PPO gradient step per minibatch (no repeated epochs over the same
+  buffer) — paper doesn't specify PPO epochs-per-batch.
+- Training episodes are drawn from OUR workload generator/environment
+  (`src/dqc/rl/train_env.py`'s simplified wave/capacity bookkeeping, not
+  the full SimPy engine or Qoala), per A1.
+**What this is NOT:** a claim of convergence to the paper's reported
+PPO behavior, nor a result comparable to the paper's Tables 4-13 PPO rows.
+There's no ground truth to validate against (the authors' own training
+code/checkpoints aren't published), so "did it converge correctly" can't be
+answered — only "does the loop run, update stably, and show the reward
+trending the intended direction," which it does.
+**Scope reduction, disclosed per the master prompt's own rule:** only
+λ=5 and λ=10 were trained (the master prompt's explicitly stated priority
+order), not the full λ=4-15 sweep (12 separate models) the paper's
+evaluation uses for its PPO rows — that would need ~8x the training time
+shown here plus deciding per-rate hyperparameter stability, not attempted.
+**Status:** `SCHEDULER_MODEL_REPRODUCTION`, mechanics-and-training-complete
+but intentionally narrow in scope; labeled as such everywhere it's used.
+
 ## A6. Homebrew Python is 3.14, not 3.12
 **Issue:** `/opt/homebrew/bin/python3.12` does not exist; Homebrew's python3
 resolves to 3.14.7. A separate Python.framework install at
